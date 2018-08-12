@@ -1,0 +1,14 @@
+#
+# creates a sample docker image to test the AWS container registry
+#
+FROM ubuntu:18.04
+
+RUN mkdir -p /hello-world
+COPY hello-world.sh /hello-world/hello-world.sh
+RUN chmod +x /hello-world/hello-world.sh
+
+
+
+
+
+
