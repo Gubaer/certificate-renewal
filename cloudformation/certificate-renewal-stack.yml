@@ -1,0 +1,113 @@
+Resources:
+
+  # the role the certificate renewal task assumes when executing
+  CertificateRenewalRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: certificate-renewal-role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+                - ec2.amazonaws.com
+     
+
+  # allows to create/delete the certbot challenge in the S3 bucket
+  # hosting the kacon.ch website
+  KaconChWriteCertbotChallengePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: KaconChWriteCertbotChallenge
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+            Resource: arn:aws:s3:::www.kacon.ch/.well-known/acme-challenge/*
+      Roles:
+        - Ref: CertificateRenewalRole
+
+  # allows to upload a new cloudfront server certificate
+  UploadCloudfrontServerCertificatePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: UploadCloudfrontServerCertificate
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - iam:UploadServerCertificate
+            Resource: arn:aws:iam::154819770423:server-certificate/cloudfront/certs/*
+      Roles:
+        - Ref: CertificateRenewalRole
+
+  # allows to update cloudfront distributions. Required to assign the distribution
+  # a new server certificate
+  ManageCloudfrontDistributionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ManageCloudfrontDistribution
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - cloudfront:GetDistributionConfig
+              - cloudfront:UpdateDistribution
+            Resource: "*"
+      Roles:
+        - Ref: CertificateRenewalRole
+
+  # the repository for the docker images
+  CertificateRenewalRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: certificate-renewal
+
+  # the default cluster to run certificate renewal tasks
+  # DefaultCluster:
+  #   Type: AWS::ECS::Cluster
+  #   Properties:
+  #     ClusterName: default
+
+  # the log group
+  CertificateRenewalLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: 
+      LogGroupName: certificate-renewal
+
+  # the task definition for the certificate renewal
+  CertificateRenewalTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties: 
+      Family: certificate-renewal
+      TaskRoleArn: !GetAtt CertificateRenewalRole.Arn
+      ExecutionRoleArn: !GetAtt CertificateRenewalRole.Arn
+      Memory: 1024
+      Cpu: 256
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Name: certificate-renewal
+          Image: 154819770423.dkr.ecr.eu-central-1.amazonaws.com/certificate-renewal
+          Memory: 1024
+          EntryPoint:
+            - bash
+          Command:
+            - /certificate-renewal/renew.sh
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: certificate-renewal
+              awslogs-region: eu-central-1
+              awslogs-stream-prefix: certificate-renewal
