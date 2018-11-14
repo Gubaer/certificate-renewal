@@ -1,463 +1,325 @@
+# AWS stack
 
-# Prepare and upload a simple docker images
+Automatic renewal of a let's encrypt runs on an _AWS stack_, which consists of 
 
-```bash
-# create the docker image
-$ sudo docker build -t hello-world -f hello-world.docker .
-```
+  * the required AWS IAM **users**, **roles** and their associated **policies**
+  * an AWS ECR **repository** which holds a docker images with the renewal script
+  * an AWS ECS **task definition** which describes the task to renew a certificate
+  * an AWS CloudWatch **log group** which collects the logs from running the tag and where the logs can be consulted
+  * an AWS ECS **cluster** where the job is run
 
-To access the Amazon ECR services
-* create an IAM user (in my case: `kacon-ch-certificate-renewal`)
-* attach policy `AmazonEC2ContainerRegistryFullAccess`
+The required stack can be created with an AWS CloudFormation template, except the required AWS ECS **cluster** which is
+not created as part of the stack. The certificate renewal task uses the default ECS cluster of type FARGATE, i.e. a cluster based on Amazons internal compute engines and not on a set of AWS ECS engines we launch ourselves.
 
-```bash
-# required to create a repository and to upload images by the 
-# user kacon-ch-certificate-renewal
-$ aws iam attach-user-policy \
-  --profile root \
-  --user-name kacon-ch-certificate-renewal \
-  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+## Manage the stack
 
-# required to list and create clusters with the user kacon-ch-certificate-renewal
-$ aws iam attach-user-policy \
-  --profile root \
-  --user-name kacon-ch-certificate-renewal \
-  --policy-arn arn:aws:iam::aws:policy/AmazonECS_FullAccess
+The stack is described in the AWS CloudFormation template `cloudformation/certificate-renewal-stack.yml`.
 
-$ aws iam attach-user-policy \
-  --profile root \
-  --user-name kacon-ch-certificate-renewal \
-  --policy-arn arn:aws:iam::aws:policy/AWSKeyManagementServicePowerUser
-
-$ aws iam attach-user-policy \
-  --profile root \
-  --user-name kacon-ch-certificate-renewal \
-  --policy-arn arn:aws:iam::aws:policy/AmazonSSMFullAccess
-```
-
-Create a ECR repository. It will hold the all the versions of one images.
-```bash
-$ aws ecr create-repository \
-  --profile root \
-  --repository-name hello-world
-```
-
-Results in:
-```json
-{
-    "repository": {
-        "registryId": "154819770423", 
-        "repositoryName": "hello-world", 
-        "repositoryArn": "arn:aws:ecr:eu-central-1:154819770423:repository/hello-world", 
-        "createdAt": 1537847970.0, 
-        "repositoryUri": "154819770423.dkr.ecr.eu-central-1.amazonaws.com/hello-world"
-    }
-}
-```
-
-Tag the `hello-world` image with the Amazon ECR repository URI
-```bash
-$ sudo docker tag hello-world 154819770423.dkr.ecr.eu-central-1.amazonaws.com/hello-world
-```
-
-Let AWS prepare the docker login command:
-```bash
-$ aws ecr get-login \
-  --profile root \
-  --no-include-email
-```
-Results in:
-```
-docker login -u AWS -p eyJwYXlsb2FkI ... https://154819770423.dkr.ecr.eu-west-1.amazonaws.com
-```
-
-Invoke the command:
-```bash
-$ sudo docker login -u AWS -p eyJwYXlsb2FkI ... https://154819770423.dkr.ecr.eu-west-1.amazonaws.com
-```
-
-Push the image
-```bash
-$ sudo docker push 154819770423.dkr.ecr.eu-central-1.amazonaws.com/hello-world
-```
-
-List the available images the in the AWS ECR repository:
-```bash
-$ aws ecr list-images \
-  --profile root \
-  --repository-name hello-world
-```
-
-# Prequisites for AWS ECS
-
-## a role `ecsTaskExecutionRole` must be configured
-
-* with the following assigned policy: `AmazonECSTaskExecutionRolePolicy`
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": [
-          "ec2.amazonaws.com",
-          "ecs-tasks.amazonaws.com"
-        ]
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-```
-
-
-Möglicherweise auch diesen Service hinzufügen:`ssm.amazonaws.com`
-
+Create the stack with the following command:
 
 ```bash
-# create the role 
-$ aws iam create-role \
-   --profile root \
-   --role-name ecsTaskExecutionRole \
-   --description "Allows EC2 instances to call AWS services on your behalf" \
-   --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["ec2.amazonaws.com","ecs-tasks.amazonaws.com"]},"Action":"sts:AssumeRole"}]}'
 
-# attach it a policy
-$ aws iam attach-role-policy \
+$ cd cloudformation
+
+# create the stack 
+$ aws cloudformation create-stack \
   --profile root \
-  --role-name ecsTaskExecutionRole \
-  --policy-arn "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+  --capabilities CAPABILITY_NAMED_IAM  \
+  --stack-name certificate-renewal-stack \
+  --template-body file://certificate-renewal-stack.yml
 ```
+
+Open the [AWS CloudFormation console](https://eu-central-1.console.aws.amazon.com/cloudformation/) to
+observe how the stack is created and whether it is created successfully.
+
+To delete the stack run:
 
 ```bash
-# create the role 
-$ aws iam create-role \
-   --profile root \
-   --role-name helloWorldTaskExecution \
-   --description "Allows hello-world tasks to call AWS services on our behalf" \
-   --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["ecs-tasks.amazonaws.com"]},"Action":"sts:AssumeRole"}]}'
-
-$ aws iam attach-role-policy \
+$ aws cloudformation delete-stack \
   --profile root \
-  --role-name helloWorldTaskExecution \
-  --policy-arn "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
-
-# attach it a policy
-$ aws iam attach-role-policy \
-  --profile root \
-  --role-name helloWorldTaskExecution \
-  --policy-arn "arn:aws:iam::154819770423:policy/AmazonSSMReadParameter"
+  --stack-name certificate-renewal-stack
 ```
 
-
-
-## a default cluster must exists
+## Manage the cluster
 
 ```bash
 $ aws ecs list-clusters \
-  --profile root
+    --profile root
 ```
 
-If no default-cluster is listed, we have to create one.
+If the output looks as follows, you already have a default cluster. 
+```json
+{
+    "clusterArns": [
+        "arn:aws:ecs:eu-central-1:154819770423:cluster/default"
+    ]
+}
+```
+
+If there's no entry `...:cluster/default` in the list, then you should create the cluster with 
+the following command:
+
 ```bash
 $ aws ecs create-cluster \
   --profile root \
   --cluster default
 ```
 
-# Create and run an AWS ECS task
-
-The task is described in a __task definition__, see `hello-world-tasks.json`.
-
-Register the task definition
-
-* creates the task definition in the current zone. To change the zone, run `aws configure`
+To delete the cluster, run:
 
 ```bash
-$ aws ecs register-task-definition \
+$ aws ecs delete-cluster \
   --profile root \
-  --cli-input-json file://hello-world-task.json
+  --cluster default
 ```
 
-Run a task, given a task definition
+# Docker container
 
-* `subnet` and `securityGroup` can be found on the ECS console, lookup the network panel
+A shell script requests a new certificate from the _let's encrypt_ servers, uploads to the AWS infrastructure and attaches it to the AWS CloudFront distribution. The script and and its required resources are assembled in docker image.
+
+
+## create the docker image
 
 ```bash
-$ aws ecs run-task --task-definition hello-world-task:11 \
+$ cd docker 
+
+# build the container
+$ sudo docker build \
+  --tag certificate-renewal \
+  --file certificate-renewal.docker .
+
+# tag it. Necessary to upload it later to the AWS ECS repository
+# 154819770423.dkr.ecr.eu-central-1.amazonaws.com/certificate-renewal is the repositoryUri
+# of the repository the docker image is pushed to.
+# 
+$ sudo docker tag certificate-renewal 154819770423.dkr.ecr.eu-central-1.amazonaws.com/certificate-renewal
+```
+
+## upload docker image to AWS ECR repository
+
+The docker images `certificate-renewal` must be pushed to the AWS ECS repository `certificate-renewal`. 
+
+First, get login credentials for docker and login using docker:
+```bash
+# get the login
+$ aws ecr get-login \
   --profile root \
-  --launch-type FARGATE \
-  --cluster default \
-  --platform-version LATEST \
-  --count 1 \
-  --network-configuration "awsvpcConfiguration={subnets=[subnet-29da8f64],securityGroups=[sg-c44921a8],assignPublicIp=ENABLED}"
+  --no-include-email
+
+# run the login command 
+$ sudo docker login .... # this is the output of the last command
 ```
-
-# Send an email from the docker container
-
-* use [mailgun](https://www.mailgun.com/)
-* registered for free plan. See account in keypass
-* log in, click on the only available domain, get API key
+The upload the docker images:
 
 ```bash
-curl -s --user 'api:59af2a978bf107de19c9057eab3418cc-7efe8d73-1ba05e0a' \
-    https://api.mailgun.net/v3/sandboxb5440a24d09e4617ab9286bcfe3d61d1.mailgun.org/messages \
-    -F from=karl@sandboxb5440a24d09e4617ab9286bcfe3d61d1.mailgun.org \
-    -F to=karl.guggisberg@kacon.ch \
-    -F subject='hello-world' \
-    -F text='hello-world'
+# upload the docker images
+$ sudo docker push 154819770423.dkr.ecr.eu-central-1.amazonaws.com/certificate-renewal
+
+
+```
+## run docker container locally
+```bash
+$  sudo docker run \
+    -ti \
+    --rm \
+    -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+    -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+    -e "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION" \
+    certificate-renewal bash
 ```
 
+# IAM
 
-# Manage secret parameters
+* role `certificateRenewalRole`
 
+  * attached policies
+
+    * AmazonEC2ContainerServiceforEC2Role
+    * AmazonSSMReadParameter  - to read SSM system parameters
+    * KaconChWriteCertbotChallenge          - write to S3 bucket for certbot challenge
+    * KaconChUpdateCloudfontDistribution   - update cloud front distribution for kacon.ch
+
+* group `certificate-renewer`
+
+  * attached policies
+    * AmazonSSMReadParameter  - to read SSM system parameters
+    * KaconChS3Write          - write to S3 bucket for kacon.ch website
+    * KaconChUpdateCloudfontDistribution   - update cloud front distribution for kacon.ch
+
+
+* user `certificate-renewer`
+
+    * member of group `certificate-renewer`
+
+From the dev host, login with `certificate-renewer` and test. When executing an AWS lambda function or an ECS task,
+use the `certificateRenewalRole`.
+
+
+{"Version":"2012-10-17","Statement":[{"Sid":"VisualEditor0","Effect":"Allow","Action":["s3:PutObject","s3:GetObject"],"Resource":"arn:aws:s3:::www.kacon.ch/.well-known/acme-challenge/*"}]}
 
 ```bash
-# create the encryption key we use to encrypt secret parmeters 
-$ aws kms create-key --description hello-world-key
-```
-
-```json
-{
-    "KeyMetadata": {
-        "Origin": "AWS_KMS", 
-        "KeyId": "53ecc9c2-365a-47d6-a657-5e2a2dd013b9", 
-        "Description": "hello-world-key", 
-        "KeyManager": "CUSTOMER", 
-        "Enabled": true, 
-        "KeyUsage": "ENCRYPT_DECRYPT", 
-        "KeyState": "Enabled", 
-        "CreationDate": 1534085712.127, 
-        "Arn": "arn:aws:kms:eu-central-1:154819770423:key/53ecc9c2-365a-47d6-a657-5e2a2dd013b9", 
-        "AWSAccountId": "154819770423"
-    }
-}
-```
-
-
-Encrypt and store a parameter
-
-```bash
-$ aws ssm put-parameter \
-  --name mailgun.apikey \
-  --value "<the mailgun api key>" \
-  --type SecureString \
-  --key-id "53ecc9c2-365a-47d6-a657-5e2a2dd013b9"
-
-
-$ aws ssm put-parameter \
-  --name hello-world.mailgun-api-key \
-  --value "59af2a978bf107de19c9057eab3418cc-7efe8d73-1ba05e0a" \
-  --type SecureString \
-  --key-id "53ecc9c2-365a-47d6-a657-5e2a2dd013b9"
-
-
-$ aws ssm put-parameter \
-  --profile root \
-  --name hello-world.message \
-  --value "Message 1234" \
-  --type String
-
-
-$ aws ssm get-parameter \
-  --profile root \
-  --name hello-world.message 
-```
-
-```bash
-$ aws ssm get-parameter \
-  --name mailgun.apikey \
-  --with-decryption
-
-$ aws ssm get-parameter \
-  --name hello-world.mailgun-api-key \
-  --with-decryption
-```
-
-# Prepare IAM roles 
-
-Need `iam:CreateRole` permission.
-
-```bash
-$ aws iam create-role \
-    --role-name hello-world \
-    --assume-role-policy-document file://ecs-tasks-trust-policy.json
-```
-
-Creates the following role
-```json
-{
-    "Role": {
-        "AssumeRolePolicyDocument": {
-            "Version": "2012-10-17", 
-            "Statement": [
-                {
-                    "Action": "sts:AssumeRole", 
-                    "Principal": {
-                        "Service": "ecs-tasks.amazonaws.com"
-                    }, 
-                    "Effect": "Allow", 
-                    "Sid": ""
-                }
-            ]
-        }, 
-        "RoleId": "AROAJOVGWMTOOYZ7OGVEE", 
-        "CreateDate": "2018-08-15T15:14:57Z", 
-        "RoleName": "hello-world", 
-        "Path": "/", 
-        "Arn": "arn:aws:iam::154819770423:role/hello-world"
-    }
-}
-```
-
-```bash
+# creates the policy KaconChWriteCertbotChallenge
 $ aws iam create-policy \
-  --policy-name hello-world-secret-access \
-  --policy-document file://hello-world-secret-access.json
-```
-
-```json
-{
-    "Policy": {
-        "PolicyName": "hello-world-secret-access", 
-        "CreateDate": "2018-08-15T15:22:35Z", 
-        "AttachmentCount": 0, 
-        "IsAttachable": true, 
-        "PolicyId": "ANPAIWUWNPRGC6XKELUXG", 
-        "DefaultVersionId": "v1", 
-        "Path": "/", 
-        "Arn": "arn:aws:iam::154819770423:policy/hello-world-secret-access", 
-        "UpdateDate": "2018-08-15T15:22:35Z"
-    }
-}
-```
-
-```bash
-$ aws iam attach-role-policy \
-  --role-name hello-world \
-  --policy-arn "arn:aws:iam::154819770423:policy/hello-world-secret-access"
-```
-
-
-# Empty service image
-
-```bash
-$ sudo docker build -t empty-service-image -f empty-service-image.docker .
-```
-
-```bash
-# create the ECS repository
-$ aws ecr create-repository --repository-name empty-service-image
-```
-
-```json
-{
-    "repository": {
-        "registryId": "154819770423", 
-        "repositoryName": "empty-service-image", 
-        "repositoryArn": "arn:aws:ecr:eu-central-1:154819770423:repository/empty-service-image", 
-        "createdAt": 1534775300.0, 
-        "repositoryUri": "154819770423.dkr.ecr.eu-central-1.amazonaws.com/empty-service-image"
-    }
-}
-```
-
-```bash
-# tag the image
-$ sudo docker tag empty-service-image 154819770423.dkr.ecr.eu-central-1.amazonaws.com/empty-service-image
-```
-
-```bash
-# push the image
-$ sudo docker push 154819770423.dkr.ecr.eu-central-1.amazonaws.com/empty-service-image
-```
-
-```bash
-# register the task
-$ aws ecs register-task-definition \
-  --cli-input-json file://empty-service-task.json
-```
-
-# Log Groups
-
-```bash
-# create a log group
-$ aws logs create-log-group \
     --profile root \
-    --log-group-name hello-world
+    --policy-name "KaconChWriteCertbotChallenge" \
+    --description "Allows to create certbot challenges in the S3 bucket hosting www.kacon.ch" \
+    --policy-document '{"Version":"2012-10-17","Statement":[{"Sid":"VisualEditor0","Effect":"Allow","Action":["s3:PutObject","s3:GetObject"],"Resource":"arn:aws:s3:::www.kacon.ch/.well-known/acme-challenge/*"}]}'
 
-# describe log groups
-$ aws logs describe-log-groups \
-    --profile root
-
-# delete log group
-$ aws logs delete-log-group \
+# create group
+$ aws iam create-group \
     --profile root \
-    --log-group-name hello-world
+    --group-name certificate-renewer-group
+
+$ aws iam attach-group-policy \
+    --profile root \
+    --group-name certificate-renewer-group \
+    --policy-arn "arn:aws:iam::154819770423:policy/KaconChWriteCertbotChallenge"
+
+$ aws iam create-user \
+    --profile root \
+    --user-name certificate-renewer
+
+
+$ aws iam add-user-to-group \
+    --profile root \
+    --group-name certificate-renewer-group \
+    --user-name certificate-renewer
+
+
+$ aws iam remove-user-from-group \
+    --profile root \
+    --group-name certificate-renewer-group \
+    --user-name certificate-renewer
+
+$ aws iam delete-user \
+    --profile root \
+    --user-name certificate-renewer
+
+$ aws iam detach-group-policy \
+    --profile root \
+    --group-name certificate-renewer-group \
+    --policy-arn "arn:aws:iam::154819770423:policy/KaconChWriteCertbotChallenge"
+
+$ aws iam delete-group \
+    --profile root \
+    --group-name certificate-renewer-group
 ```
 
-# Amazon Cloudfront
+
+# Docker 
+
+## create docker image
+
+```bash
+# build the container
+$ sudo docker build -t certificate-renewal -f certificate-renewal.docker .
+
+# tag it. Necessary to upload it later to the AWS ECS repository
+$ sudo docker tag certificate-renewal 154819770423.dkr.ecr.eu-central-1.amazonaws.com/certificate-renewal
+```
+
+## run docker container locally
+
+```bash
+$  sudo docker run \
+    -ti \
+    --rm \
+    -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+    -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+    -e "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION" \
+    certificate-renewal bash
+```
+
+## upload docker image to AWS ECS repository
+```bash
+# get the login
+$ aws ecr get-login \
+  --profile root \
+  --no-include-email
+
+# run the login command
+$ sudo docker login ...
+
+# upload the docker images
+$ sudo docker push 154819770423.dkr.ecr.eu-central-1.amazonaws.com/certificate-renewal
+
+```
+
+# Lambda
+
+# create the zip file with the lambda code
+
+```bash
+$ npm run assemble
+
+```
+```bash
+# create the lambda function
+$ aws lambda create-function \
+  --profile root \
+  --function-name CertificateRenewal \
+  --runtime nodejs8.10 \
+  --role arn:aws:iam::154819770423:role/hello-world-role \
+  --zip-file fileb://certificate-renewal.zip \
+  --handler certificate-renewal.handler \
+  --description "Automatically renews a let's encrypt certificate"
+
+# update the code
+$ aws lambda update-function-code \
+    --profile root \
+    --function-name  CertificateRenewal \
+    --zip-file fileb://certificate-renewal.zip
+
+# invoke the function
+$ aws lambda invoke \
+  --profile root \
+  --function-name CertificateRenewal \
+  certificate-renewal.output
+```
+
+# Cloudformation
 
 ```bash
 $ aws cloudformation create-stack \
   --profile root \
-  --stack-name test-iam-stack \
   --capabilities CAPABILITY_NAMED_IAM  \
-  --template-body file://iam-template.yml
+  --stack-name certificate-renewal-stack \
+  --template-body file://certificate-renewal-stack.yml
+
+$ aws cloudformation update-stack \
+  --profile root \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --stack-name certificate-renewal-stack \
+  --template-body file://certificate-renewal-stack.yml
+
+$ aws cloudformation validate-template \
+  --profile root \
+  --template-body file://certificate-renewal-stack.yml
 
 
 $ aws cloudformation describe-stacks \
   --profile root \
-  --stack-name test-iam-stack
+  --stack-name certificate-renewal-stack
+
 
 $ aws cloudformation delete-stack \
   --profile root \
-  --stack-name test-iam-stack
-
-$ aws cloudformation list-stack-resources \
-  --profile root \
-  --stack-name test-iam-stack
-
-
-
-$ aws cloudformation create-stack \
-  --profile root \
-  --stack-name repository-stack \
-  --template-body file://repository-template.yml
-
-$ aws cloudformation delete-stack \
-  --profile root \
-  --stack-name repository-stack
-
-
-$ aws cloudformation create-stack \
-  --profile root \
-  --capabilities CAPABILITY_NAMED_IAM  \
-  --stack-name ecsTaskExecutionRole-stack \
-  --template-body file://ecsTaskExecutionRole-role-template.yml
-
-$ aws cloudformation delete-stack \
-  --profile root \
-  --stack-name ecsTaskExecutionRole-stack
-
-
-$ aws cloudformation list-stack-resources \
-  --profile root \
-  --stack-name ecsTaskExecutionRole-stack
-
-
+  --stack-name certificate-renewal-stack
 ```
 
-IAM Roles for Tasks - Notes
-https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html
+# Certbot
 
+## Manual steps
 
-
-
-
-
-
-
-
+```bash
+# --non-interactive?
+$ certbot certonly \
+    --manual \
+    --preferred-challenges http \
+    --email "karl.guggisberg@kacon.ch" \
+    --domains www.kacon.ch \
+    --manual-public-ip-logging-ok \
+    --no-eff-email \
+    --agree-tos \
+    --manual-auth-hook /certificate-renewal/certbot-authenticator.sh
+```
