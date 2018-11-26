@@ -1,0 +1,6 @@
+certificate_renewal:
+  lambda:
+    # the id of the VPC subnet
+    vpc_subnet_id: <id-of-vpc-subnet>
+    # the id of the VPC security group
+    vpc_security_group_id: <id-of-vpc-security-group>
