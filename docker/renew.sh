@@ -29,7 +29,6 @@ CERTIFICATE_ID=$(aws iam upload-server-certificate \
 
 echo "Certificate uploaded. Certificate ID is '$CERTIFICATE_ID'"
 
-
 #TODO: configure the production distribution
 # E2GEKJ7CN252O3 is a test distribution
 CLOUDFRONT_DISTRIBUTION_ID=E2GEKJ7CN252O3
