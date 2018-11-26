@@ -1,0 +1,88 @@
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - include_role:
+        name: env
+        tasks_from: ensure-required-env
+
+    - name: delete CloudWatch scheduler rule
+      cloudwatchevent_rule:
+        name: CertificateRenewalRule
+        state: absent
+    
+    - name: delete Lambda function
+      lambda:
+        name: CertificateRenewal
+        state: absent
+
+    - ecs_taskdefinition_facts:
+        task_definition: certificate-renewal
+      register: ecs_taskdefinition_facts_output
+
+    - name: delete ECS task definition
+      ecs_taskdefinition:
+        family: certificate-renewal
+        revision: "{{ item }}"
+        state: absent
+      with_sequence: start=1 end="{{ ecs_taskdefinition_facts_output.revision }}"
+      when: ecs_taskdefinition_facts_output.revision is defined
+
+    - name: delete CloudWatch log group
+      cloudwatchlogs_log_group:
+        log_group_name: certificate-renewal
+        state: absent
+
+    - name: empty ECR repository
+      shell: >
+        IMAGE_DIGESTS=$(aws ecr list-images \
+          --repository-name certificate-renewal \
+          | jq -r '.imageIds | map("imageDigest=\(.imageDigest)") | join(",")')
+        aws ecr batch-delete-image \
+          --repository-name certificate-renewal \
+          --image-ids "$IMAGE_DIGESTS"
+
+    - name: delete ECR repository
+      ecs_ecr:
+        name: certificate-renewal
+        state: absent
+
+    - name: remove policy - allow to create an run a Lambda function in a VPC
+      iam_policy:
+        iam_type: role
+        state: absent
+        iam_name: certificateRenewalExecutionRole
+        policy_name: CreateLambdaFunctionInVPC
+
+    - name: remove policy - allow to invoke an ECS task from a lambda function
+      iam_policy:
+        iam_type: role
+        state: absent
+        iam_name: certificateRenewalExecutionRole
+        policy_name: LambdaInvokeECSTaskPolicy
+
+    - name: remove policy - allow to create log streams and to put log events
+      iam_policy:
+        iam_type: role
+        state: absent
+        iam_name: certificateRenewalExecutionRole
+        policy_name: CloudWatchLogPolicy
+
+    - name: remove policy - allow to read from ECR repository
+      iam_policy:
+        iam_type: role
+        state: absent
+        iam_name: certificateRenewalExecutionRole
+        policy_name: EcrReadPolicy
+
+    - name: delete executor role
+      iam:
+        iam_type: role
+        name: certificateRenewalExecutionRole
+        state: absent
+
+
+
+
+
+
