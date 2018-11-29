@@ -1,18 +1,21 @@
 #!/bin/bash
 #
 # generates a new let's encrypt certificate, deploys it as AWS server
-# certificate, and assigns it to the AWS cloudfront distribution for
-# www.kacon.ch
+# certificate, and assigns it to an AWS cloudfront distribution
 
 # tries to source a configuration file. It should define the following
-# environment variables used in this script
+# environment variables used in this script. Don't maintain the configuration
+# file manually, generate it using ansible:
+#     $ cd ../ansible
+#     $ ansible-playbook --tags create-config create-stack.yml
+#     # -> writes the configuration file renew.config
 #
 # CLOUDFRONT_DISTRIBUTION_ID
 #   the ID of the cloudfront distribution we assign the refreshed 
 #   certificate to
 #
 # CERTBOT_DOMAIN
-#   the domain for which we request a certificate, i.e. www.kacon.ch
+#   the domain for which we request a certificate
 #
 # CERTBOT_EMAIL
 #   the email-adresse submitted to certbot
@@ -39,13 +42,13 @@ certbot certonly \
     --manual-auth-hook /certificate-renewal/certbot-auth-hook.sh \
     --manual-cleanup-hook /certificate-renewal/certbot-cleanup-hook.sh
 
-CERTIFICATE_NAME=cert_www_kacon_ch_$(date '+%Y-%m-%dT%H-%M-%S')
+CERTIFICATE_NAME=cert_$(echo $CERTBOT_DOMAIN | tr '.' '_')_$(date '+%Y-%m-%dT%H-%M-%S')
 echo "Uploading the new server certificate '$CERTIFICATE_NAME' ..."
 
 CERTIFICATE_ID=$(aws iam upload-server-certificate \
   --server-certificate-name $CERTIFICATE_NAME \
-  --private-key file:///etc/letsencrypt/live/www.kacon.ch/privkey.pem \
-  --certificate-body file:///etc/letsencrypt/live/www.kacon.ch/fullchain.pem \
+  --private-key file:///etc/letsencrypt/live/$CERTBOT_DOMAIN/privkey.pem \
+  --certificate-body file:///etc/letsencrypt/live/$CERTBOT_DOMAIN/fullchain.pem \
   --path /cloudfront/certs/ \
   | jq -r ".ServerCertificateMetadata.ServerCertificateId")
 
