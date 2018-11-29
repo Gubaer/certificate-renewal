@@ -4,12 +4,34 @@
 # certificate, and assigns it to the AWS cloudfront distribution for
 # www.kacon.ch
 
+# tries to source a configuration file. It should define the following
+# environment variables used in this script
+#
+# CLOUDFRONT_DISTRIBUTION_ID
+#   the ID of the cloudfront distribution we assign the refreshed 
+#   certificate to
+#
+# CERTBOT_DOMAIN
+#   the domain for which we request a certificate, i.e. www.kacon.ch
+#
+# CERTBOT_EMAIL
+#   the email-adresse submitted to certbot
+#
+CONFIG_FILE_NAME=renew.config
+if [ ! -r "$CONFIG_FILE_NAME" ]; then
+    echo "FATAL: configuration file '$CONFIG_FILE_NAME' not found or not readable"
+    exit 1
+fi
+source $CONFIG_FILE_NAME
+
+# fail if expected environment variables are not set
+set -u
 
 # create the certificate
 certbot certonly \
     --manual \
-    --domains www.kacon.ch \
-    --email "karl.guggisberg@kacon.ch" \
+    --domains "$CERTBOT_DOMAIN" \
+    --email "$CERTBOT_EMAIL" \
     --preferred-challenges http \
     --manual-public-ip-logging-ok \
     --no-eff-email \
@@ -31,7 +53,7 @@ echo "Certificate uploaded. Certificate ID is '$CERTIFICATE_ID'"
 
 #TODO: configure the production distribution
 # E2GEKJ7CN252O3 is a test distribution
-CLOUDFRONT_DISTRIBUTION_ID=E2GEKJ7CN252O3
+#CLOUDFRONT_DISTRIBUTION_ID=E2GEKJ7CN252O3
 
 echo "Get cloudfront distribution $CLOUDFRONT_DISTRIBUTION_ID ..."
 aws cloudfront get-distribution-config \
