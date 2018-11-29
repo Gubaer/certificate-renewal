@@ -204,6 +204,13 @@
           - id: CertificateRenewalTarget
             arn: "{{ lambdaFunctionArn }}"
 
+    - name: create config file for renew.sh script
+      template:
+        src: renew.conf.j2
+        dest: ../docker/renew.config
+      tags:
+        - create-config
+        
     - name: create docker image
       docker_image:
         path: ../docker
