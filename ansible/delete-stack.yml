@@ -80,9 +80,3 @@
         iam_type: role
         name: certificateRenewalExecutionRole
         state: absent
-
-
-
-
-
-
