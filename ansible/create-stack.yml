@@ -172,6 +172,12 @@
                 awslogs-region: eu-central-1
                 awslogs-stream-prefix: certificate-renewal
 
+    - name: build Lamba function zip
+      shell: >
+        cd ../lambda/certificate-renewal && npm run assemble
+      tags:
+        - build-lambda-function
+
     - name: create Lambda function
       lambda:
         name: CertificateRenewal
