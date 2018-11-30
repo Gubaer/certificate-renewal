@@ -38,9 +38,12 @@
         IMAGE_DIGESTS=$(aws ecr list-images \
           --repository-name certificate-renewal \
           | jq -r '.imageIds | map("imageDigest=\(.imageDigest)") | join(",")')
-        aws ecr batch-delete-image \
-          --repository-name certificate-renewal \
-          --image-ids "$IMAGE_DIGESTS"
+
+        if [ "$IMAGE_DIGESTS" != "" ] ; then
+          aws ecr batch-delete-image \
+            --repository-name certificate-renewal \
+            --image-ids "$IMAGE_DIGESTS"
+        fi
 
     - name: delete ECR repository
       ecs_ecr:
