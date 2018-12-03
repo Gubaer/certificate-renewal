@@ -1,6 +1,21 @@
 - hosts: localhost
   connection: local
   gather_facts: false
+
+  tasks:
+    - stat:
+        path: config.yml
+      register: config_file_status
+    - fail:
+        msg: |
+          configuration file`'config.yml' doesn't exist. Copy the 
+          template 'config.yml.distrib' and adjust the configuration
+          settings.
+      when: config_file_status.stat.isreg is undefined or config_file_status.stat.isreg == False 
+
+- hosts: localhost
+  connection: local
+  gather_facts: false
   vars_files:
     - config.yml
   tasks:
@@ -172,6 +187,11 @@
                 awslogs-region: eu-central-1
                 awslogs-stream-prefix: certificate-renewal
 
+    - name: create ECS cluster
+      ecs_cluster:
+        name: default
+        state: present
+
     - name: build Lamba function zip
       shell: >
         cd ../lambda/certificate-renewal && npm run assemble
@@ -182,6 +202,7 @@
       lambda:
         name: CertificateRenewal
         state: present
+        timeout: 60
         role: "{{ certificateRenewalExecutionRoleJson.arn }}"
         handler: certificate_renewal.handler
         runtime: nodejs8.10
@@ -190,6 +211,9 @@
         vpc_security_group_ids:
           - "{{ certificate_renewal.lambda.vpc_security_group_id }}"
         zip_file: "../lambda/certificate-renewal/certificate-renewal.zip"
+        environment_variables:
+          SECURITY_GROUP: "{{ certificate_renewal.lambda.vpc_security_group_id }}"
+          SUBNET: "{{ certificate_renewal.lambda.vpc_subnet_id }}"
 
     - name: read Lambda function facts
       lambda_facts:

@@ -16,6 +16,13 @@
         name: CertificateRenewal
         state: absent
 
+    # don't delete the cluster. Assume the 'default' cluster is a cluster
+    # shared with other tasks
+    # - name: delete ECS cluster
+    #   ecs_cluster:
+    #     name: default
+    #     state: absent
+
     - ecs_taskdefinition_facts:
         task_definition: certificate-renewal
       register: ecs_taskdefinition_facts_output
