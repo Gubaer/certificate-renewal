@@ -1,74 +1,55 @@
-# AWS stack
+# AWS stack to renew Let's-encrypt-SSL-certificates
 
-This repository provices an [Amazon CloudFormation][Amazon CloudFormation] **stack** to periodically and automatically renew a Let's-encrypt-SSL-certificate and to configure and deploy it for a website hosted on [Amazon S3][Amazon S3].
+This repository provides an [Amazon AWS][Amazon AWS] **stack** to periodically and automatically renew a Let's-encrypt-SSL-certificate, and to deploy it for a website hosted on [Amazon S3][Amazon S3].
 
 The stack consists of:
 
-  * the required AWS IAM **users**, **roles** and their associated **policies**
-  * an AWS ECR **repository** which holds a docker images with the renewal script
-  * an AWS ECS **task definition** which describes the task to renew a certificate
-  * an AWS CloudWatch **log group** which collects the logs from running the tag and where the logs can be consulted
-  * an AWS ECS **cluster** where the job is run
+  * the required [AWS IAM][AWS IAM] **users**, **roles** and their associated **policies**
+  * an [Amazon ECR][Amazon ECR] **repository** which holds a docker image with the renewal script
+  * an [Amazon ECS][Amazon ECS] **task definition** which describes the task to renew a certificate
+  * an [Amazon ECS][Amazon ECS] **cluster** where AWS will create a docker container from the supplied docker image
+  * an [Amazon Lambda][Amazon Lambda] **function**  which will launch the ECS task
+  * an [Amazon CloudWatch][Amazon CloudWatch] **log group** which collects the logs of the docker container and the Lambda function
 
-The required stack can be created with an AWS CloudFormation template, except the required AWS ECS **cluster** which is
-not created as part of the stack. The certificate renewal task uses the default ECS cluster of type FARGATE, i.e. a cluster based on Amazons internal compute engines and not on a set of AWS ECS engines we launch ourselves.
+The required stack is managed with [ansible](https://www.ansible.com/) playbooks.
 
 ## Manage the stack
 
-The stack is described in the AWS CloudFormation template `cloudformation/certificate-renewal-stack.yml`.
+### Configure the AWS credentials
 
-Create the stack with the following command:
+  * copy `ansible/aws.env.distrib` to `ansible/aws.env` and update the configuration files
+  * set the required configuration values
 
-```bash
+    ```bash
+    $ source ansible/aws.env
+    ```
 
-$ cd cloudformation
+### Configure the stack
 
-# create the stack 
-$ aws cloudformation create-stack \
-  --capabilities CAPABILITY_NAMED_IAM  \
-  --stack-name certificate-renewal-stack \
-  --template-body file://certificate-renewal-stack.yml
-```
+  * copy `config.yml.distrib` to `config.yml` and update the configuration entries
 
-Open the [AWS CloudFormation console](https://eu-central-1.console.aws.amazon.com/cloudformation/) to
-observe how the stack is created and whether it is created successfully.
+### Create the stack
 
-To delete the stack run:
+  ```bash
+  $ cd ansible
+  # creates the AWS stack 
+  $ ansible-playbook create-stack.yml
+  ```
 
-```bash
-$ aws cloudformation delete-stack \
-  --stack-name certificate-renewal-stack
-```
+### Delete the stack
 
-## Manage the cluster
+  ```bash
+  $ cd ansible
+  $ ansible-playbook delete-stack.yml
+  ```
 
-```bash
-$ aws ecs list-clusters
-```
 
-If the output looks as follows, you already have a default cluster. 
-```json
-{
-    "clusterArns": [
-        "arn:aws:ecs:eu-central-1:154819770423:cluster/default"
-    ]
-}
-```
-
-If there's no entry `...:cluster/default` in the list, then you should create the cluster with 
-the following command:
-
-```bash
-$ aws ecs create-cluster --cluster default
-```
-
-To delete the cluster, run:
-
-```bash
-$ aws ecs delete-cluster --cluster default
-```
-
-# Docker container
-
-A shell script requests a new certificate from the _let's encrypt_ servers, uploads to the AWS infrastructure and attaches it to the AWS CloudFront distribution. The script and and its required resources are assembled in docker image.
-
+[Amazon ECS]: https://aws.amazon.com/ecs/
+[Amazon ECR]: https://aws.amazon.com/ecr/
+[AWS IAM]: https://aws.amazon.com/iam/
+[Amazon CloudFormation]: https://aws.amazon.com/cloudformation/
+[Amazon Lambda]: https://aws.amazon.com/lambda/
+[Amazon CloudWatch]: https://aws.amazon.com/cloudwatch/
+[Amazon CloudFormation]: https://aws.amazon.com/cloudformation/
+[AWS CLI]: https://aws.amazon.com/cli/
+[Amazon VPC]: https://aws.amazon.com/vpc/
