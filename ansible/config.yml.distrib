@@ -1,6 +1,22 @@
+#
+# copy to config.yml and edit configuration values
+#
 certificate_renewal:
   lambda:
     # the id of the VPC subnet
     vpc_subnet_id: <id-of-vpc-subnet>
     # the id of the VPC security group
     vpc_security_group_id: <id-of-vpc-security-group>
+
+  # this is the ID of the CloudFront destribution the
+  # the renewed certificate will be assigned to 
+  cloudfront_distribution: <id-of-the-cloudfront-distribution>
+
+  # parameters for the Let's-encrypt certbot
+  certbot:
+    # the domain for which we generate an SSL certificate
+    domain: <domain.name>
+    # the email address of the person who requests the SSL
+    # certificate
+    email: <email-address>
+    
