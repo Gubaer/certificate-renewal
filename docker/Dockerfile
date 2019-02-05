@@ -1,28 +1,30 @@
 #
-# creates a sample docker image to test the AWS container registry
+# creates a docker image for renewing the certificate
 #
 FROM ubuntu:18.04
 
 # install required utilities
-RUN apt-get update && apt-get install -y \
-  curl \
-  jq
+# TODO(karl): remove.not needed anymore for the python script
+#RUN apt-get update && apt-get install -y \
+#  curl \
+#  jq
 
-# install pip
-RUN apt-get update && \
-    apt-get install -y \
+# install pip and python3 modules
+RUN apt-get -y update
+RUN apt-get install -y \
         python3 \
-        python3-pip \
-        python3-setuptools \
-        groff \
-        less \
-    && pip3 install --upgrade pip \
-    && apt-get clean
+        python3-pip 
+RUN pip3 install --upgrade pip
+RUN pip3 install \
+        request \
+        boto3
+RUN apt-get clean
 
 # install awscli using pip
 RUN pip3 --no-cache-dir install --upgrade awscli
 
 ENV DEBIAN_FRONTEND=noninteractive
+
 # install certbot
 RUN apt-get update \
     && apt-get -y install software-properties-common \
@@ -30,12 +32,8 @@ RUN apt-get update \
     && apt-get update \
     && apt-get -y install certbot
 
-
 RUN mkdir -p /certificate-renewal
-COPY renew.sh /certificate-renewal/renew.sh
-COPY certbot-auth-hook.sh /certificate-renewal/certbot-auth-hook.sh
-COPY certbot-cleanup-hook.sh /certificate-renewal/certbot-cleanup-hook.sh
-RUN chmod +x /certificate-renewal/*.sh
+COPY bin/renew-certificate.py /certificate-renewal
 
 
 

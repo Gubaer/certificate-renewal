@@ -243,9 +243,13 @@
         
     - name: create docker image
       docker_image:
-        path: ../docker
+        path: ../
+        dockerfile: docker/Dockerfile
         state: present
         name: certificate-renewal:latest
+        force: true
+      tags:
+        - create-docker-image
 
     - name: tag docker image with ECR repository URI
       docker_image:
