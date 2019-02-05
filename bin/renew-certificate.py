@@ -12,6 +12,7 @@ import shutil
 import argparse
 import pprint
 import json
+import tempfile
 
 CERTBOT_DOMAIN="www.kacon.ch"
 CERTBOT_EMAIL="karl.guggisberg@kacon.ch"
