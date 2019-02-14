@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 #
 # login uses credentials in the env variables AWS_ACCESS_KEY_ID and
 # AWS_SECRET_ACCESS_KEY
@@ -52,6 +53,17 @@ class Config:
     # the command line arguments
     args = None
 
+    def config_entry(self, *keys):
+        value = self.config_file_entries
+        if value == None:
+            return None
+        for key in keys:
+            try:
+                value = value[key]
+            except KeyError:
+                return None
+        return value
+
     def load_config_file(self, config_file):
         with open(config_file, "r") as stream:
             self.config_file_entries = yaml.load(stream)
@@ -77,19 +89,21 @@ class Config:
                 "failed to read config file '{0}".format(config_file_path)
             ) from e
 
+    _certbot_dir = None
     @property
     def certbot_dir(self):
         """Replies the full path to the certbot working directory."""
         config_values = [
+            self._certbot_dir,
             self.args.certbot_dir,
-            self.config_file_entries["certbot"]["dir"]
-                if self.config_file_entries != None
-                else None
+            self.config_entry("certbot", "dir")
         ]
         value = first_not_none(config_values)
         if value:
+            self._certbot_dir = value
             return value
         value = tempfile.mkdtemp(suffix=".certbot")
+        self._certbot_dir = value
         return value
 
     @property
@@ -97,9 +111,7 @@ class Config:
         """Replies the domain for which a certificate is renewed"""
         config_values = [
             self.args.certbot_domain,
-            self.config_file_entries["certbot"]["domain"]
-                if self.config_file_entries != None
-                else None
+            self.config_entry("certbot","domain")
         ]
         value = first_not_none(config_values)
         if value:
@@ -114,9 +126,7 @@ class Config:
         """Replies the email address used to renew the certificate"""
         config_values = [
             self.args.certbot_email,
-            self.config_file_entries["certbot"]["email"]
-                if self.config_file_entries != None
-                else None
+            self.config_entry("certbot","email")
         ]
         value = first_not_none(config_values)
         if value:
@@ -133,8 +143,7 @@ class Config:
         # possible values, from highest to lowest priority
         config_values = [
             self.args.s3_bucket,
-            self.config_file_entries["s3"]["bucket"] 
-                if self.config_file_entries != None else None,
+            self.config_entry("s3","bucket"),
             self.certbot_domain
             ]
         # find the non-null value with highest priority
@@ -146,8 +155,7 @@ class Config:
         certificate is updated"""
         config_values = [
             self.args.cloudfront_distribution_id,
-            self.config_file_entries["cloudfront"]["distribution_id"] 
-                if self.config_file_entries != None else None
+            self.config_entry("cloudfront","distribution_id")
         ]
         value = first_not_none(config_values)
         if value:
@@ -167,7 +175,7 @@ class CertificateRenewTask:
 
     @property
     def certbot_dir(self):
-        return config.certbot_dir
+        return self.config.certbot_dir
 
     def remove_certbot_dir(self):
         """removes the certbot directory"""
@@ -190,8 +198,8 @@ class CertificateRenewTask:
         return [
             "/usr/bin/certbot", "certonly",
             "--manual",
-            "--domains", config.certbot_domain,
-            "--email", config.certbot_email,
+            "--domains", self.config.certbot_domain,
+            "--email", self.config.certbot_email,
             "--preferred-challenges", "http",
             "--force-renew",
             "--manual-public-ip-logging-ok",
@@ -258,7 +266,7 @@ class CertificateRenewTask:
         and replies it as string"""
         return self.read_text_file(
             os.path.join(
-                self.certbot_dir, "config", "live", config.certbot_domain,
+                self.certbot_dir, "config", "live", self.config.certbot_domain,
                 "cert.pem")
         )
 
@@ -267,7 +275,7 @@ class CertificateRenewTask:
         replies it as string"""
         return self.read_text_file(
             os.path.join(
-                self.certbot_dir, "config", "live", config.certbot_domain,
+                self.certbot_dir, "config", "live", self.config.certbot_domain,
                 "privkey.pem")
         )
 
@@ -276,7 +284,7 @@ class CertificateRenewTask:
         and replies it as string"""
         return self.read_text_file(
             os.path.join(
-                self.certbot_dir, "config", "live", config.certbot_domain,
+                self.certbot_dir, "config", "live", self.config.certbot_domain,
                 "chain.pem")
         )
 
@@ -395,7 +403,7 @@ def main():
     config = Config(args)
 
     # if a config file is passed in, make sure it exists and is readable
-    Config.ensure_config_file_readable(config.config_file)
+    Config.ensure_config_file_readable(args.config_file_path)
 
     task = CertificateRenewTask(config)
     task.init_certbotdir()
