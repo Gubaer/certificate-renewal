@@ -2,7 +2,6 @@
 # login uses credentials in the env variables AWS_ACCESS_KEY_ID and
 # AWS_SECRET_ACCESS_KEY
 #
-
 import os
 import sys
 from time import gmtime, strftime
@@ -13,20 +12,162 @@ import argparse
 import pprint
 import json
 import tempfile
+import yaml
 
-CERTBOT_DOMAIN="www.kacon.ch"
-CERTBOT_EMAIL="karl.guggisberg@kacon.ch"
-# test distribution
-CLOUDFRONT_DISTRIBUTION_ID="E2GEKJ7CN252O3"
-# production distribution
-#CLOUDFRONT_DISTRIBUTION_ID="E2WVJ7WJ8MF8SC"
+DEFAULT_CONFIG_FILENAME="renew-certificate.conf"
+
+def is_file_readable(file):
+    return os.path.isfile(file) or not os.access(file, os.R_OK)
+
+def first_not_none(list):
+    try:
+        return next(value for value in list if value is not None)
+    except StopIteration:
+        return None
+
+class ConfigError(Exception):
+    """Represents a configuration exception"""
+    pass
+
+class Config:
+    """Represents the configuration parameters for the renew task"""
+
+    @staticmethod
+    def default_config_file_path():
+        """Replies the full path to the default location of the config file"""
+        return os.path.join(os.getcwd(), DEFAULT_CONFIG_FILENAME)
+
+    @staticmethod
+    def ensure_config_file_readable(config_file_path=None):
+        if config_file_path != None:
+            path = config.config_file
+            if not is_file_readable(path):
+                raise ConfigError(
+                    "FATAL: config file '{0}' doesn't exist or isn't readable. Aborting."
+                    .format(path)
+                )
+
+    # the config dict loaded from the config YAML file
+    config_file_entries = None
+    # the command line arguments
+    args = None
+
+    def load_config_file(self, config_file):
+        with open(config_file, "r") as stream:
+            self.config_file_entries = yaml.load(stream)
+
+    def __init__(self, args):
+        self.args = args
+        config_file_path = args.config_file_path
+        if config_file_path == None:
+            config_file_path = Config.default_config_file_path()
+            print("INFO: trying to read config file from default" + 
+                " location '{0}'".format(config_file_path))
+
+        if not is_file_readable(config_file_path):
+            print(("WARNING: config file at location '{0}'" + 
+                " doesn't exist or isn't readable. Ignoring config file.")
+                .format(config_file_path))
+            return
+
+        try:
+            self.load_config_file(config_file_path)
+        except  (yaml.YAMLError, IOError) as e:
+            raise IOError(
+                "failed to read config file '{0}".format(config_file_path)
+            ) from e
+
+    @property
+    def certbot_dir(self):
+        """Replies the full path to the certbot working directory."""
+        config_values = [
+            self.args.certbot_dir,
+            self.config_file_entries["certbot"]["dir"]
+                if self.config_file_entries != None
+                else None
+        ]
+        value = first_not_none(config_values)
+        if value:
+            return value
+        value = tempfile.mkdtemp(suffix=".certbot")
+        return value
+
+    @property
+    def certbot_domain(self):
+        """Replies the domain for which a certificate is renewed"""
+        config_values = [
+            self.args.certbot_domain,
+            self.config_file_entries["certbot"]["domain"]
+                if self.config_file_entries != None
+                else None
+        ]
+        value = first_not_none(config_values)
+        if value:
+            return value
+        raise ConfigError(
+            """certbot domain is not configured. Either configure it in the 
+            config file or use the command line argument --certbot-domain.
+            """)
+
+    @property
+    def certbot_email(self):
+        """Replies the email address used to renew the certificate"""
+        config_values = [
+            self.args.certbot_email,
+            self.config_file_entries["certbot"]["email"]
+                if self.config_file_entries != None
+                else None
+        ]
+        value = first_not_none(config_values)
+        if value:
+            return value
+        raise ConfigError(
+            """certbot email is not configured. Either configure it in the 
+            config file or use the command line argument --certbot-email.
+            """
+        )
+
+    @property
+    def s3_bucket(self):
+        """Replies the name of the S3 bucket where the website is hosted"""
+        # possible values, from highest to lowest priority
+        config_values = [
+            self.args.s3_bucket,
+            self.config_file_entries["s3"]["bucket"] 
+                if self.config_file_entries != None else None,
+            self.certbot_domain
+            ]
+        # find the non-null value with highest priority
+        return first_not_none(config_values)
+
+    @property
+    def cloudfront_distribution_id(self):
+        """Replies the id of the cloudfront distribution whose server 
+        certificate is updated"""
+        config_values = [
+            self.args.cloudfront_distribution_id,
+            self.config_file_entries["cloudfront"]["distribution_id"] 
+                if self.config_file_entries != None else None
+        ]
+        value = first_not_none(config_values)
+        if value:
+            return value
+        raise ConfigError(
+            """cloudfront distribution is is not configured. Either configure 
+            it in the config file or use the command line argument 
+            --cloudfront-distribution-id.
+            """
+        )
 
 class CertificateRenewTask:
-    certbot_dir = None
+    config = None
 
-    def create_temp_certbot_dir(self):
-        """creates a tempory certbot directory"""
-        self.certbot_dir = tempfile.mkdtemp(suffix=".certbot")
+    def __init__(self, config):
+        self.config = config
+
+    @property
+    def certbot_dir(self):
+        return config.certbot_dir
 
     def remove_certbot_dir(self):
         """removes the certbot directory"""
@@ -36,9 +177,7 @@ class CertificateRenewTask:
     def init_certbotdir(self):
         """creates the three subdirectories in the certbot directory,
         unless they already exist"""
-        if self.certbot_dir == None:
-            self.create_temp_certbot_dir()
-        elif not os.path.isdir(self.certbot_dir):
+        if not os.path.isdir(self.certbot_dir):
             os.makedirs(self.certbot_dir)
 
         print("Using certbot directory '{0}'".format(self.certbot_dir))
@@ -51,8 +190,8 @@ class CertificateRenewTask:
         return [
             "/usr/bin/certbot", "certonly",
             "--manual",
-            "--domains", CERTBOT_DOMAIN,
-            "--email", CERTBOT_EMAIL,
+            "--domains", config.certbot_domain,
+            "--email", config.certbot_email,
             "--preferred-challenges", "http",
             "--force-renew",
             "--manual-public-ip-logging-ok",
@@ -74,7 +213,6 @@ class CertificateRenewTask:
             if line == b"":
                 continue
             return line
-
 
     def publish_challenge(self, challenge_info):
         """Published the challenge info in the S3 bucket hosting the website"""
@@ -106,7 +244,8 @@ class CertificateRenewTask:
 
     def build_certificate_name(self):
         date_tag = strftime("%Y_%m_%d_%H_%M_%S", gmtime())
-        certificate_name = "www_kacon_ch_{0}".format(date_tag)
+        certificate_name = self.config.certbot_domain.replace(".", "_")
+        certificate_name = "{0}_{1}".format(certificate_name, date_tag)
         return certificate_name
 
     def read_text_file(self, path):
@@ -119,7 +258,7 @@ class CertificateRenewTask:
         and replies it as string"""
         return self.read_text_file(
             os.path.join(
-                self.certbot_dir, "config", "live", CERTBOT_DOMAIN,
+                self.certbot_dir, "config", "live", config.certbot_domain,
                 "cert.pem")
         )
 
@@ -128,7 +267,7 @@ class CertificateRenewTask:
         replies it as string"""
         return self.read_text_file(
             os.path.join(
-                self.certbot_dir, "config", "live", CERTBOT_DOMAIN,
+                self.certbot_dir, "config", "live", config.certbot_domain,
                 "privkey.pem")
         )
 
@@ -137,7 +276,7 @@ class CertificateRenewTask:
         and replies it as string"""
         return self.read_text_file(
             os.path.join(
-                self.certbot_dir, "config", "live", CERTBOT_DOMAIN,
+                self.certbot_dir, "config", "live", config.certbot_domain,
                 "chain.pem")
         )
 
@@ -152,9 +291,6 @@ class CertificateRenewTask:
             CertificateChain = self.read_certificate_chain()
         )
         return response["ServerCertificateMetadata"]["ServerCertificateId"]
-
-    def publish_certificate(self):
-        cloud_front = boto3.client("cloudfront")
 
     def renew(self):
         certbot_cmd = self.build_certbot_command()
@@ -176,6 +312,43 @@ class CertificateRenewTask:
             DistributionConfig=distribution_config,
             IfMatch=etag)
 
+def build_argument_parser():
+    parser = argparse.ArgumentParser(
+        description="renews and publishes a letsencrypt certificate")
+    parser.add_argument("--certbot-dir", dest="certbot_dir", 
+        metavar="DIR", 
+        help="the directory where the script creates the config, work, " +
+            "and logs directory for certbot\n" +
+            "If missing, creates a new temporary directory.")
+    parser.add_argument("--remove-certbot-dir", 
+        action="store_true",
+        help="if set, removes the certbot directory after the script is run.\n" +
+            "This deletes the certificates, including the private keys from \n" +
+            "the local filesystem.")
+    parser.add_argument("-c", "--config-file",
+        dest="config_file_path",
+        metavar="PATH",
+        help="the path to the config file")
+    parser.add_argument("--certbot-domain",
+        dest="certbot_domain",
+        metavar="DOMAIN",
+        help="the domain for which we renew a certificate, i.e. www.kacon.ch")
+    parser.add_argument("--certbot-email",
+        dest="certbot_email",
+        metavar="EMAIL_ADDRESS",
+        help="the email address used to renew the certificate, " + 
+             " i.e. user@a-domain.com")
+    parser.add_argument("--s3-bucket",
+        dest="s3_bucket",
+        metavar="BUCKET_NAME",
+        help="the name of the S3 bucket where the website is hosted")
+    parser.add_argument("--cloudfront-distribution-id",
+        metavar="ID",
+        help="the id of the cloudfront distribution whose server certifiate" +
+            " we update with the renewed certificate")
+    return parser
+
+
 def test_publish_challenge():
     task = CertificateRenewTask()
     task.init_certbotdir()
@@ -187,8 +360,11 @@ def test_publish_challenge():
     task.publish_challenge(challenge_info)
 
 def test_cloudfront_distribution():
+    test_cloudfront_distribution_id="E2GEKJ7CN252O3"
+    parser = build_argument_parser()
+    config = Config(parser.parse_args())
     task = CertificateRenewTask()
-    reply = task.get_cloudfront_distribution(CLOUDFRONT_DISTRIBUTION_ID)
+    reply = task.get_cloudfront_distribution(test_cloudfront_distribution_id)
     print(json.dumps(reply, indent=2, default=str))
     etag = reply["ETag"]
     distribution_config = reply["Distribution"]["DistributionConfig"]
@@ -202,28 +378,26 @@ def test_cloudfront_distribution():
         "CertificateSource": "iam"
     }
     task.update_cloudfront_distribution(
-        id=CLOUDFRONT_DISTRIBUTION_ID,
+        id=test_cloudfront_distribution_id,
         distribution_config=distribution_config,
         etag=etag)
 
+def test_config():
+    parser = build_argument_parser()
+    config = Config(parser.parse_args())
+    print(config.certbot_email)
+    print(config.certbot_domain)
+
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="renews and publishes a letsencrypt certificate")
-    parser.add_argument("--certbot-dir", dest="certbot_dir", 
-        metavar="DIR", 
-        help="the directory where the script creates the config, work, " +
-            "and logs directory for certbot\n" +
-            "If missing, creates a new temporary directory.")
-    parser.add_argument("--remove-certbot-dir", 
-        action="store_true",
-        help="if set, removes the certbot directory after the script is run.\n" +
-            "This deletes the certificates, including the private keys from \n" +
-            "the local filesystem.")
-
+    parser = build_argument_parser()
     args = parser.parse_args()
+    config = Config(args)
 
-    task = CertificateRenewTask()
-    task.certbot_dir = args.certbot_dir
+    # if a config file is passed in, make sure it exists and is readable
+    Config.ensure_config_file_readable(config.config_file)
+
+    task = CertificateRenewTask(config)
     task.init_certbotdir()
 
     # renew certificate
@@ -237,7 +411,9 @@ def main():
         .format(server_certificate_id))
 
     # update cloudfront distribution with the certificate
-    reply = task.get_cloudfront_distribution(CLOUDFRONT_DISTRIBUTION_ID)
+    reply = task.get_cloudfront_distribution(
+            config.cloudfront_distribution_id
+        )
     etag = reply["ETag"]
     distribution_config = reply["Distribution"]["DistributionConfig"]
 
@@ -249,12 +425,12 @@ def main():
         "CertificateSource": "iam"
     }
     task.update_cloudfront_distribution(
-        id=CLOUDFRONT_DISTRIBUTION_ID,
+        id=config.cloudfront_distribution_id,
         distribution_config=distribution_config,
         etag=etag)
 
     print("assigned server certificate {0} to cloudfront distribution {1}"
-        .format(server_certificate_id, CLOUDFRONT_DISTRIBUTION_ID))
+        .format(server_certificate_id, config.cloudfront_distribution_id))
 
     if args.remove_certbot_dir:
         task.remove_certbot_dir()
