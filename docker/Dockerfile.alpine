@@ -3,6 +3,8 @@
 #
 FROM alpine
 
+ARG RENEW_CERTIFICATE_CONF_PATH=bin/renew-certificate.conf
+
 RUN apk add --no-cache python3 && \
     python3 -m ensurepip && \
     rm -r /usr/lib/python*/ensurepip && \
@@ -24,7 +26,7 @@ RUN pip3 --no-cache-dir install --upgrade awscli
 
 RUN mkdir -p /certificate-renewal
 COPY bin/renew-certificate.py /certificate-renewal
-COPY bin/renew-certificate.conf /certificate-renewal
+COPY ${RENEW_CERTIFICATE_CONF_PATH} /certificate-renewal/renew-certificate.conf
 
 
 
