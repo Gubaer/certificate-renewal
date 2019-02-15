@@ -3,6 +3,17 @@
 #
 FROM alpine
 
+LaBEL org.label-schema.schema-version = "1.0"
+LABEL org.label-schema.name = "certificate-renewal"
+LABEL org.label-schema.description = "Provides a command to renew a Let's encrypt \
+certificate for a website hosted on Amazon S3. The script also uploads the new \
+server certificate to AWS IAM and assigns it to the AWS Cloudfront distribution \
+which serves the website."
+LABEL org.label-schema.version = "0.0.1"
+
+
+# full path from where the configuration file renew-certificate.conf \
+# is included at build time.
 ARG RENEW_CERTIFICATE_CONF_PATH=bin/renew-certificate.conf
 
 RUN apk add --no-cache python3 && \
