@@ -1,4 +1,4 @@
 aws.env
 config.yml
 *.retry
-.generated
+*.generated
