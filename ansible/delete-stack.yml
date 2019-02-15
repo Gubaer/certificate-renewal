@@ -64,26 +64,19 @@
         iam_name: certificateRenewalExecutionRole
         policy_name: CreateLambdaFunctionInVPC
 
-    - name: remove policy - allow to invoke an ECS task from a lambda function
+    - name: remove policies from execution role
       iam_policy:
         iam_type: role
         state: absent
         iam_name: certificateRenewalExecutionRole
-        policy_name: LambdaInvokeECSTaskPolicy
-
-    - name: remove policy - allow to create log streams and to put log events
-      iam_policy:
-        iam_type: role
-        state: absent
-        iam_name: certificateRenewalExecutionRole
-        policy_name: CloudWatchLogPolicy
-
-    - name: remove policy - allow to read from ECR repository
-      iam_policy:
-        iam_type: role
-        state: absent
-        iam_name: certificateRenewalExecutionRole
-        policy_name: EcrReadPolicy
+        policy_name: "{{ item }}"
+      with_items:
+        - LambdaInvokeECSTaskPolicy
+        - CloudWatchLogPolicy
+        - EcrReadPolicy
+        - PutCertbotChallengeToS3Bucket
+        - CreateLambdaFunctionInVPC
+        - UploadServerCertificate
 
     - name: delete executor role
       iam:

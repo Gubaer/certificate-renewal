@@ -158,6 +158,44 @@
             ]
           }
 
+    - name: assign policy - allow to put the certbot challenge to a S3 bucket
+      iam_policy:
+        iam_type: role
+        state: present
+        iam_name: certificateRenewalExecutionRole
+        policy_name: PutCertbotChallengeToS3Bucket
+        policy_json: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "VisualEditor0",
+                "Effect": "Allow",
+                "Action": "s3:PutObject",
+                "Resource": "arn:aws:s3:::{{ certificate_renewal.s3.bucket }}/*"
+              }
+            ]
+          }
+
+    - name: assign policy - allow to upload the server certificate
+      iam_policy:
+        iam_type: role
+        state: present
+        iam_name: certificateRenewalExecutionRole
+        policy_name: UploadServerCertificate
+        policy_json: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "VisualEditor0",
+                "Effect": "Allow",
+                "Action": "iam:UploadServerCertificate",
+                "Resource": "arn:aws:iam:::server-certificate/cloudfront/certs/*"
+              }
+            ]
+          }
+
     - name: create ECR repository
       ecs_ecr:
         name: certificate-renewal
@@ -186,16 +224,19 @@
         state: present
         network_mode: awsvpc
         execution_role_arn: "{{ certificateRenewalExecutionRoleJson.arn }}"
+        task_role_arn: "{{ certificateRenewalExecutionRoleJson.arn }}"
         launch_type: FARGATE
         cpu: 256
         memory: 1024
         containers:
           - name: certificate-renewal
             entryPoint: 
-              - bash
-            image: certificate-renewal
+              - /bin/sh
+              - "-c"
+            image: "{{ repositoryUri }}"
             command: 
-              - /certificate-renewal/renew-certificate.py
+              - > 
+                /bin/sh -c "/usr/bin/python3 /certificate-renewal/renew-certificate.py"
             logConfiguration:
               logDriver: awslogs
               options:
@@ -208,47 +249,47 @@
         name: default
         state: present
 
-    - name: build Lamba function zip
-      shell: >
-        cd ../lambda/certificate-renewal && npm run assemble
-      tags:
-        - build-lambda-function
+    # - name: build Lamba function zip
+    #   shell: >
+    #     cd ../lambda/certificate-renewal && npm run assemble
+    #   tags:
+    #     - build-lambda-function
 
-    - name: create Lambda function
-      lambda:
-        name: CertificateRenewal
-        state: present
-        timeout: 60
-        role: "{{ certificateRenewalExecutionRoleJson.arn }}"
-        handler: certificate_renewal.handler
-        runtime: nodejs8.10
-        vpc_subnet_ids:
-          - "{{ certificate_renewal.lambda.vpc_subnet_id }}"
-        vpc_security_group_ids:
-          - "{{ certificate_renewal.lambda.vpc_security_group_id }}"
-        zip_file: "../lambda/certificate-renewal/certificate-renewal.zip"
-        environment_variables:
-          SECURITY_GROUP: "{{ certificate_renewal.lambda.vpc_security_group_id }}"
-          SUBNET: "{{ certificate_renewal.lambda.vpc_subnet_id }}"
+    # - name: create Lambda function
+    #   lambda:
+    #     name: CertificateRenewal
+    #     state: present
+    #     timeout: 60
+    #     role: "{{ certificateRenewalExecutionRoleJson.arn }}"
+    #     handler: certificate_renewal.handler
+    #     runtime: nodejs8.10
+    #     vpc_subnet_ids:
+    #       - "{{ certificate_renewal.lambda.vpc_subnet_id }}"
+    #     vpc_security_group_ids:
+    #       - "{{ certificate_renewal.lambda.vpc_security_group_id }}"
+    #     zip_file: "../lambda/certificate-renewal/certificate-renewal.zip"
+    #     environment_variables:
+    #       SECURITY_GROUP: "{{ certificate_renewal.lambda.vpc_security_group_id }}"
+    #       SUBNET: "{{ certificate_renewal.lambda.vpc_subnet_id }}"
 
-    - name: read Lambda function facts
-      lambda_facts:
-        function_name: CertificateRenewal
-        query: all
-      register: lambda_function_facts_output
+    # - name: read Lambda function facts
+    #   lambda_facts:
+    #     function_name: CertificateRenewal
+    #     query: all
+    #   register: lambda_function_facts_output
 
-    - set_fact:
-        lambdaFunctionArn: "{{ lambda_function_facts_output.ansible_facts.lambda_facts.function.CertificateRenewal.function_arn }}"
+    # - set_fact:
+    #     lambdaFunctionArn: "{{ lambda_function_facts_output.ansible_facts.lambda_facts.function.CertificateRenewal.function_arn }}"
 
-    - name: create CloudWatch scheduler rule
-      cloudwatchevent_rule:
-        name: CertificateRenewalRule
-        state: present
-        description: "Triggers the CertificateRenewal Lambda function"
-        schedule_expression: "rate(12 hours)"
-        targets:
-          - id: CertificateRenewalTarget
-            arn: "{{ lambdaFunctionArn }}"
+    # - name: create CloudWatch scheduler rule
+    #   cloudwatchevent_rule:
+    #     name: CertificateRenewalRule
+    #     state: present
+    #     description: "Triggers the CertificateRenewal Lambda function"
+    #     schedule_expression: "rate(12 hours)"
+    #     targets:
+    #       - id: CertificateRenewalTarget
+    #         arn: "{{ lambdaFunctionArn }}"
 
     - name: create config file renew-certificate.conf
       template:
