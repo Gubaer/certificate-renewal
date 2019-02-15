@@ -1,0 +1,21 @@
+#
+# configuration parameters for renew-certificate.pl
+#
+certbot:
+  # the domain for which renewe the certificate
+  domain: {{ certificate_renewal.certbot.domain }}
+  # the d
+  email: {{ certificate_renewal.certbot.email }}
+  # the working directory for certbot. The script creates three subdirectories
+  # there: 'config', 'work', and 'log'. If missing, the script creates 
+  # and uses a temp directory.
+  #dir: /tmp
+
+#s3:
+  # the bucket where the website is hosted. Defaults to certbot.domain,
+  # if absent
+  # bucket:
+
+cloudfront:
+  # test
+  distribution_id: {{ certificate_renewal.cloudfront_distribution }}

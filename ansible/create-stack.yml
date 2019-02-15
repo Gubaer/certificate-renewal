@@ -3,9 +3,12 @@
   gather_facts: false
 
   tasks:
+    # check existence of config file ...
     - stat:
         path: config.yml
       register: config_file_status
+
+    # ... and fail if it doesn't exist
     - fail:
         msg: |
           configuration file`'config.yml' doesn't exist. Copy the 
@@ -13,12 +16,15 @@
           settings.
       when: config_file_status.stat.isreg is undefined or config_file_status.stat.isreg == False 
 
+
 - hosts: localhost
   connection: local
   gather_facts: false
   vars_files:
     - config.yml
   tasks:
+
+    # make sure the env variables with the AWS credentials are set
     - include_role:
         name: env
         tasks_from: ensure-required-env
@@ -53,6 +59,8 @@
         state: present
         iam_name: certificateRenewalExecutionRole
         policy_name: EcrReadPolicy
+        # Resource is not restricted to a specific repo. Allows to
+        # read from any ECR repository
         policy_json: >
           {
             "Version": "2012-10-17",
@@ -155,9 +163,17 @@
         name: certificate-renewal
         state: present
       register: ecr_repository
+      tags:
+        - create-ecr-repository
+        - tag-docker-image
+        - push-docker-image
 
     - set_fact:
         repositoryUri: "{{ ecr_repository.repository.repositoryUri }}"
+      tags:
+        - create-ecr-repository
+        - tag-docker-image
+        - push-docker-image
 
     - name: create CloudWatch log group
       cloudwatchlogs_log_group:
@@ -179,7 +195,7 @@
               - bash
             image: certificate-renewal
             command: 
-              - /certificate-renewal/refresh.sh
+              - /certificate-renewal/renew-certificate.py
             logConfiguration:
               logDriver: awslogs
               options:
@@ -234,34 +250,44 @@
           - id: CertificateRenewalTarget
             arn: "{{ lambdaFunctionArn }}"
 
-    - name: create config file for renew.sh script
+    - name: create config file renew-certificate.conf
       template:
-        src: renew.conf.j2
-        dest: ../docker/renew.config
+        src: renew-certificate.conf.j2
+        dest: renew-certificate.conf.generated
       tags:
+        - create-docker-image
         - create-config
         
     - name: create docker image
       docker_image:
         path: ../
-        dockerfile: docker/Dockerfile
+        dockerfile: docker/Dockerfile.alpine
         state: present
         name: certificate-renewal:latest
         force: true
+        buildargs:
+          RENEW_CERTIFICATE_CONF_PATH: ansible/renew-certificate.conf.generated
       tags:
         - create-docker-image
 
+    - name: log into ECR repository
+      shell: "$(aws ecr get-login --no-include-email --region {{ lookup('env', 'AWS_REGION') }})"
+      tags:
+        - ecr-login
+        - tag-docker-image
+
     - name: tag docker image with ECR repository URI
       docker_image:
-        name: certificate-renewal:latest
+        name: certificate-renewal
         repository: "{{ repositoryUri }}"
         state: present
         pull: no
-
-    - name: log into ECR repository
-      shell: "$(aws ecr get-login --no-include-email --region {{ lookup('env', 'AWS_REGION') }})"
+      tags:
+        - tag-docker-image
 
     - name: push image to ECR repository
       docker_image:
         push: yes
         name: "{{ repositoryUri }}"
+      tags:
+        - push-docker-image
