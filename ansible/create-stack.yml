@@ -217,7 +217,7 @@
                   }
               ]
           }
-        
+
     - name: create ECR repository
       ecs_ecr:
         name: certificate-renewal
@@ -265,6 +265,12 @@
                 awslogs-group: certificate-renewal
                 awslogs-region: eu-central-1
                 awslogs-stream-prefix: certificate-renewal
+      register: ecs_task
+
+    - set_fact:
+        taskArn: "{{ecs_task.taskdefinition.taskDefinitionArn }}"
+
+    - debug: msg="{{ taskArn }}"
 
     - name: create ECS cluster
       ecs_cluster:
@@ -320,6 +326,11 @@
       tags:
         - create-docker-image
         - create-config
+
+    - name: create run-task json
+      template:
+        src: run-ecs-task.json.j2
+        dest: run-ecs-task.json
         
     - name: create docker image
       docker_image:
