@@ -77,6 +77,7 @@
         - PutCertbotChallengeToS3Bucket
         - CreateLambdaFunctionInVPC
         - UploadServerCertificate
+        - UpdateDistribution
 
     - name: delete executor role
       iam:

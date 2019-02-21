@@ -191,11 +191,33 @@
                 "Sid": "VisualEditor0",
                 "Effect": "Allow",
                 "Action": "iam:UploadServerCertificate",
-                "Resource": "arn:aws:iam:::server-certificate/cloudfront/certs/*"
+                "Resource": "*"
               }
             ]
           }
 
+    - name: assign policy - allow to update cloudfront distribution
+      iam_policy:
+        iam_type: role
+        state: present
+        iam_name: certificateRenewalExecutionRole
+        policy_name: UpdateDistribution
+        policy_json: >
+          {
+              "Version": "2012-10-17",
+              "Statement": [
+                  {
+                      "Sid": "VisualEditor0",
+                      "Effect": "Allow",
+                      "Action": [
+                          "cloudfront:GetDistribution",
+                          "cloudfront:UpdateDistribution"
+                      ],
+                      "Resource": "*"
+                  }
+              ]
+          }
+        
     - name: create ECR repository
       ecs_ecr:
         name: certificate-renewal
