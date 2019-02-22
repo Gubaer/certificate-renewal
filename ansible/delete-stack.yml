@@ -13,7 +13,7 @@
     
     - name: delete Lambda function
       lambda:
-        name: CertificateRenewal
+        name: certificate-renewal
         state: absent
 
     # don't delete the cluster. Assume the 'default' cluster is a cluster
@@ -56,13 +56,6 @@
       ecs_ecr:
         name: certificate-renewal
         state: absent
-
-    - name: remove policy - allow to create an run a Lambda function in a VPC
-      iam_policy:
-        iam_type: role
-        state: absent
-        iam_name: certificateRenewalExecutionRole
-        policy_name: CreateLambdaFunctionInVPC
 
     - name: remove policies from execution role
       iam_policy:

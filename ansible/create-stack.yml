@@ -149,9 +149,12 @@
               {
                   "Effect": "Allow",
                   "Action": [
-                    "ec2:DescribeNetworkInterfaces",
-                    "ec2:CreateNetworkInterface",
-                    "ec2:DeleteNetworkInterface"
+                      "ec2:DescribeInstances",
+                      "ec2:CreateNetworkInterface",
+                      "ec2:AttachNetworkInterface",
+                      "ec2:DescribeNetworkInterfaces",
+                      "ec2:DeleteNetworkInterface",
+                      "autoscaling:CompleteLifecycleAction"
                   ],
                   "Resource": "*"
               }
@@ -169,7 +172,6 @@
             "Version": "2012-10-17",
             "Statement": [
               {
-                "Sid": "VisualEditor0",
                 "Effect": "Allow",
                 "Action": "s3:PutObject",
                 "Resource": "arn:aws:s3:::{{ certificate_renewal.s3.bucket }}/*"
@@ -188,7 +190,6 @@
             "Version": "2012-10-17",
             "Statement": [
               {
-                "Sid": "VisualEditor0",
                 "Effect": "Allow",
                 "Action": "iam:UploadServerCertificate",
                 "Resource": "*"
@@ -207,7 +208,6 @@
               "Version": "2012-10-17",
               "Statement": [
                   {
-                      "Sid": "VisualEditor0",
                       "Effect": "Allow",
                       "Action": [
                           "cloudfront:GetDistribution",
@@ -235,10 +235,21 @@
         - tag-docker-image
         - push-docker-image
 
+    # WORKAROUND: there is a bug in cloudwatchlogs_log_group. It fails if it
+    # tries to create a log group which is already present.
+    # We therefore check ourselves whether the log group exists and only 
+    # try to create it, if doesn't exist yet.
+    - cloudwatchlogs_log_group_facts:
+        log_group_name: certificate-renewal
+      register: cloudwatchlogs_log_group_facts_output
+    - set_fact:
+        numCertifiateRenewalLogGroups: "{{ cloudwatchlogs_log_group_facts_output | length }}"
     - name: create CloudWatch log group
       cloudwatchlogs_log_group:
         log_group_name: certificate-renewal
         state: present
+      when: numCertifiateRenewalLogGroups == 0
+
 
     - name: create ECS task definition
       ecs_taskdefinition:
@@ -277,37 +288,43 @@
         name: default
         state: present
 
-    # - name: build Lamba function zip
-    #   shell: >
-    #     cd ../lambda/certificate-renewal && npm run assemble
-    #   tags:
-    #     - build-lambda-function
+    - name: build lambda function zip
+      shell: >
+        cd ../lambda/certificate-renewal-py && make zip
+      tags:
+        - build-lambda-function
 
-    # - name: create Lambda function
-    #   lambda:
-    #     name: CertificateRenewal
-    #     state: present
-    #     timeout: 60
-    #     role: "{{ certificateRenewalExecutionRoleJson.arn }}"
-    #     handler: certificate_renewal.handler
-    #     runtime: nodejs8.10
-    #     vpc_subnet_ids:
-    #       - "{{ certificate_renewal.lambda.vpc_subnet_id }}"
-    #     vpc_security_group_ids:
-    #       - "{{ certificate_renewal.lambda.vpc_security_group_id }}"
-    #     zip_file: "../lambda/certificate-renewal/certificate-renewal.zip"
-    #     environment_variables:
-    #       SECURITY_GROUP: "{{ certificate_renewal.lambda.vpc_security_group_id }}"
-    #       SUBNET: "{{ certificate_renewal.lambda.vpc_subnet_id }}"
+    - name: create lambda function
+      lambda:
+        name: certificate-renewal
+        state: present
+        timeout: 60
+        role: "{{ certificateRenewalExecutionRoleJson.arn }}"
+        handler: certificate_renewal.handler
+        runtime: python3.6
+        vpc_subnet_ids: "{{ certificate_renewal.lambda.vpc_subnet_ids }}"
+          #- "{{ certificate_renewal.lambda.vpc_subnet_id }}"
+        vpc_security_group_ids:
+          - "{{ certificate_renewal.lambda.vpc_security_group_id }}"
+        zip_file: "../lambda/certificate-renewal-py/certificate-renewal.zip"
+        environment_variables:
+          SECURITY_GROUP: "{{ certificate_renewal.lambda.vpc_security_group_id }}"
+          SUBNET: "{{ certificate_renewal.lambda.vpc_subnet_ids[0] }}"
+      # WORKAROUND: race condition. Need to wait until the policy 
+      # CreateLambdaFunctionInVPC assigned to the executor role is visible
+      retries: 5
+      delay: 10
+      register: lambda_result
+      until: lambda_result is success
 
-    # - name: read Lambda function facts
-    #   lambda_facts:
-    #     function_name: CertificateRenewal
-    #     query: all
-    #   register: lambda_function_facts_output
+    - name: read lambda function facts
+      lambda_facts:
+        function_name: certificate-renewal
+        query: all
+      register: lambda_function_facts_output
 
-    # - set_fact:
-    #     lambdaFunctionArn: "{{ lambda_function_facts_output.ansible_facts.lambda_facts.function.CertificateRenewal.function_arn }}"
+    - set_fact:
+        lambdaFunctionArn: "{{ lambda_function_facts_output.ansible_facts.lambda_facts.function[\"certificate-renewal\"].function_arn }}"
 
     # - name: create CloudWatch scheduler rule
     #   cloudwatchevent_rule:
