@@ -4,13 +4,21 @@
 certificate_renewal:
   lambda:
     # the id of the VPC subnet
-    vpc_subnet_id: <id-of-vpc-subnet>
+    # Recommendation: at least two subnet ids
+    vpc_subnet_ids: 
+        - <id 1>
+        - <id 2>
     # the id of the VPC security group
     vpc_security_group_id: <id-of-vpc-security-group>
 
   # this is the ID of the CloudFront destribution the
   # the renewed certificate will be assigned to 
   cloudfront_distribution: <id-of-the-cloudfront-distribution>
+
+  # the name of the S3 bucket where the website is hosted
+  s3:
+    bucket: <bucket name>
+
 
   # parameters for the Let's-encrypt certbot
   certbot:
