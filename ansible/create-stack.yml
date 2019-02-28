@@ -326,15 +326,16 @@
     - set_fact:
         lambdaFunctionArn: "{{ lambda_function_facts_output.ansible_facts.lambda_facts.function[\"certificate-renewal\"].function_arn }}"
 
-    # - name: create CloudWatch scheduler rule
-    #   cloudwatchevent_rule:
-    #     name: CertificateRenewalRule
-    #     state: present
-    #     description: "Triggers the CertificateRenewal Lambda function"
-    #     schedule_expression: "rate(12 hours)"
-    #     targets:
-    #       - id: CertificateRenewalTarget
-    #         arn: "{{ lambdaFunctionArn }}"
+    - name: create CloudWatch scheduler rule
+      cloudwatchevent_rule:
+        name: CertificateRenewalRule
+        state: present
+        description: "Triggers the CertificateRenewal Lambda function"
+        # first day of month, at 1am
+        schedule_expression: "cron(0 1 1 * ? *)"
+        targets:
+          - id: CertificateRenewalTarget
+            arn: "{{ lambdaFunctionArn }}"
 
     - name: create config file renew-certificate.conf
       template:

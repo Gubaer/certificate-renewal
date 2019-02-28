@@ -7,7 +7,7 @@ SECURITY_GROUP=sg-c44921a8
 
 zip:
 	rm certificate-renewal.zip
-	zip certificate-renewal.zip function.py
+	zip certificate-renewal.zip certificate_renewal.py
 	# no need to include boto3 in the deployment package. boto3 is 
 	# provided by the AWS lambda runtime
 	#cd env/lib/python3.6/site-packages \
@@ -17,7 +17,7 @@ create: zip
 	aws lambda create-function \
 		--function-name ${FUNCTION_NAME} \
 		--runtime "python3.6" \
-		--handler function.handler \
+		--handler certificate_renewal.handler \
 		--role "arn:aws:iam::154819770423:role/certificateRenewalExecutionRole" \
 		--zip-file fileb://${DEPLOYMENT_PACKGE} \
 		--environment Variables="{\
