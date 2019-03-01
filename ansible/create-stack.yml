@@ -242,14 +242,15 @@
     - cloudwatchlogs_log_group_facts:
         log_group_name: certificate-renewal
       register: cloudwatchlogs_log_group_facts_output
+
     - set_fact:
-        numCertifiateRenewalLogGroups: "{{ cloudwatchlogs_log_group_facts_output | length }}"
+        numCertificateRenewalLogGroups: "{{ cloudwatchlogs_log_group_facts_output.log_groups | length }}"
+
     - name: create CloudWatch log group
       cloudwatchlogs_log_group:
         log_group_name: certificate-renewal
         state: present
-      when: numCertifiateRenewalLogGroups == 0
-
+      when: numCertificateRenewalLogGroups == "0"
 
     - name: create ECS task definition
       ecs_taskdefinition:
@@ -274,14 +275,12 @@
               logDriver: awslogs
               options:
                 awslogs-group: certificate-renewal
-                awslogs-region: eu-central-1
+                awslogs-region: "{{ lookup('env', 'AWS_REGION') }}"
                 awslogs-stream-prefix: certificate-renewal
       register: ecs_task
 
     - set_fact:
         taskArn: "{{ecs_task.taskdefinition.taskDefinitionArn }}"
-
-    - debug: msg="{{ taskArn }}"
 
     - name: create ECS cluster
       ecs_cluster:
@@ -298,7 +297,7 @@
       lambda:
         name: certificate-renewal
         state: present
-        timeout: 60
+        timeout: 300
         role: "{{ certificateRenewalExecutionRoleJson.arn }}"
         handler: certificate_renewal.handler
         runtime: python3.6
@@ -336,6 +335,38 @@
         targets:
           - id: CertificateRenewalTarget
             arn: "{{ lambdaFunctionArn }}"
+      register: cloudwatch_rule_output
+
+    - set_fact:
+        cloudwatchRuleArn: "{{ cloudwatch_rule_output.rule.arn }}"
+
+    - name: allow CloudWatch events to invoke the lambda function
+      lambda_policy:
+        state: present
+        function_name: certificate-renewal
+        statement_id: lambda_certificate_renewal_cloudwatchRule
+        action: lambda:InvokeFunction
+        principal: events.amazonaws.com
+        source_arn: "{{ cloudwatchRuleArn }}"
+
+    #TODO(karl): find a solution to automatically create/delete a VPC endpoint, 
+    #   for the time being manage it manually
+    #
+    # - name: create vpc endpoint in order to access ECS API
+    #   ec2_vpc_endpoint:
+    #     state: present
+    #     region: "{{ lookup('env', 'AWS_REGION') }}"
+    #     #TODO: provide configuration entry
+    #     vpc_id: vpc-1f250674
+    #     service: "com.amazonaws.{{ lookup('env', 'AWS_REGION') }}.ecs"
+    #     policy: >
+    #      {"Statement": [
+    #          { "Action": "*",
+    #            "Effect": "Allow",
+    #            "Principal": "*",
+    #            "Resource":"*"
+    #          }
+    #       ]}
 
     - name: create config file renew-certificate.conf
       template:

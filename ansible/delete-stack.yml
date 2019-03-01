@@ -5,6 +5,26 @@
     - include_role:
         name: env
         tasks_from: ensure-required-env
+  
+    #TODO(karl): find a solution to automatically create/delete a VPC endpoint, 
+    #   for the time being manage it manually
+    #
+    # - name: delete vpc endpoint to access ECS API
+    #   ec2_vpc_endpoint:
+    #     state: absent
+    #     region: "{{ lookup('env', 'AWS_REGION') }}"
+    #     #TODO: provide configuration entry
+    #     vpc_id: vpc-1f250674
+    #     service: "com.amazonaws.{{ lookup('env', 'AWS_REGION') }}.ecs"
+
+    - name: clear policy on lambda function
+      lambda_policy:
+        state: absent
+        function_name: certificate-renewal
+        statement_id: lambda_certificate_renewal_cloudwatchRule
+        action: lambda:InvokeFunction
+        principal: events.amazonaws.com
+        #source_arn: not required when deleting
 
     - name: delete CloudWatch scheduler rule
       cloudwatchevent_rule:
