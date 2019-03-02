@@ -13,20 +13,23 @@ The stack consists of:
 
 The required stack is managed with [ansible](https://www.ansible.com/) playbooks.
 
-## Manage the stack
+## Configuration
 
 ### Configure the AWS credentials
 
-  * copy `ansible/aws.env.distrib` to `ansible/aws.env` and update the configuration files
+  * copy `aws.env.distrib` to `aws.env` and update the environment variables in `aws.env`
   * set the required configuration values
 
     ```bash
-    $ source ansible/aws.env
+    $ source aws.env
     ```
 
 ### Configure the stack
 
-  * copy `config.yml.distrib` to `config.yml` and update the configuration entries
+  * copy `ansible/config.yml.distrib` to `ansible/config.yml` and update the configuration entries
+
+
+## Manage the stack
 
 ### Create the stack
 
