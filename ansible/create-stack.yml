@@ -28,7 +28,9 @@
     - include_role:
         name: env
         tasks_from: ensure-required-env
-
+    
+    # creates an AWS IAM role which is later used by the AWS ECS task
+    # and the AWS Lambda function as 'executor role'.
     - name: create executor role
       iam:
         iam_type: role
@@ -46,12 +48,19 @@
                   - ecs-tasks.amazonaws.com
                   - events.amazonaws.com
 
+    # remember the arn of the newly created execution role
     - iam_role_facts:
         name: certificateRenewalExecutionRole
       register: iam_role_facts_output
-
     - set_fact:
-        certificateRenewalExecutionRoleJson: "{{ iam_role_facts_output.iam_roles[0] }}"
+        certificateRenewalExecutionRoleArn: "{{ iam_role_facts_output.iam_roles[0].arn }}"
+
+    # assign policies to the newly created execution role. This will empower
+    # the role to read a docker image from the AWS ECS image repository, to
+    # write to AWS logs, to invoke an ECS task, to create an AWS lambda function
+    # in a VPC, to write the certification challenge to the S3 bucket, to 
+    # upload the new server certificate, and to assign it to an AWS CloudFront
+    # distribution
 
     - name: assign policy - allow to read from ECR repository
       iam_policy:
@@ -131,7 +140,7 @@
                   "Action": [
                     "iam:PassRole"
                   ],
-                  "Resource": "{{ certificateRenewalExecutionRoleJson.arn }}"
+                  "Resource": "{{ certificateRenewalExecutionRoleArn }}"
               }
             ]
           }
@@ -217,7 +226,11 @@
                   }
               ]
           }
+    # -- enf of policies
 
+    # creates the AWS ECR repository. We later push our docker image
+    # to this repository. Also remember the URI of this newly created
+    # ECR repository.
     - name: create ECR repository
       ecs_ecr:
         name: certificate-renewal
@@ -227,7 +240,6 @@
         - create-ecr-repository
         - tag-docker-image
         - push-docker-image
-
     - set_fact:
         repositoryUri: "{{ ecr_repository.repository.repositoryUri }}"
       tags:
@@ -242,7 +254,6 @@
     - cloudwatchlogs_log_group_facts:
         log_group_name: certificate-renewal
       register: cloudwatchlogs_log_group_facts_output
-
     - set_fact:
         numCertificateRenewalLogGroups: "{{ cloudwatchlogs_log_group_facts_output.log_groups | length }}"
 
@@ -252,13 +263,16 @@
         state: present
       when: numCertificateRenewalLogGroups == "0"
 
+
+    # Creates the ECS task definition for the task, which will be executed
+    # to renew our certificate. Remember its ARN in the fact 'taskArn'.
     - name: create ECS task definition
       ecs_taskdefinition:
         family: certificate-renewal
         state: present
         network_mode: awsvpc
-        execution_role_arn: "{{ certificateRenewalExecutionRoleJson.arn }}"
-        task_role_arn: "{{ certificateRenewalExecutionRoleJson.arn }}"
+        execution_role_arn: "{{ certificateRenewalExecutionRoleArn }}"
+        task_role_arn: "{{ certificateRenewalExecutionRoleArn }}"
         launch_type: FARGATE
         cpu: 256
         memory: 1024
@@ -278,27 +292,31 @@
                 awslogs-region: "{{ lookup('env', 'AWS_REGION') }}"
                 awslogs-stream-prefix: certificate-renewal
       register: ecs_task
-
     - set_fact:
         taskArn: "{{ecs_task.taskdefinition.taskDefinitionArn }}"
 
+    # Make sure we have default ECS cluster
     - name: create ECS cluster
       ecs_cluster:
         name: default
         state: present
 
+    # creates the deployment package for our AWS Lambda function
     - name: build lambda function zip
       shell: >
         cd ../lambda/certificate-renewal-py && make zip
       tags:
         - build-lambda-function
 
+    # Create the lambda function and remember its ARN in the fact 
+    # 'lambdaFunctionArn'
+    #
     - name: create lambda function
       lambda:
         name: certificate-renewal
         state: present
         timeout: 300
-        role: "{{ certificateRenewalExecutionRoleJson.arn }}"
+        role: "{{ certificateRenewalExecutionRoleArn }}"
         handler: certificate_renewal.handler
         runtime: python3.6
         vpc_subnet_ids: "{{ certificate_renewal.lambda.vpc_subnet_ids }}"
@@ -325,6 +343,10 @@
     - set_fact:
         lambdaFunctionArn: "{{ lambda_function_facts_output.ansible_facts.lambda_facts.function[\"certificate-renewal\"].function_arn }}"
 
+
+    # Creates the CloudWatch scheduler rule which will periodically trigger
+    # our AWS Lambda function to renew the certificate, and remembers 
+    # its ARN in the fact 'cloudwatchRuleArn'
     - name: create CloudWatch scheduler rule
       cloudwatchevent_rule:
         name: CertificateRenewalRule
