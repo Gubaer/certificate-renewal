@@ -304,7 +304,7 @@
     # creates the deployment package for our AWS Lambda function
     - name: build lambda function zip
       shell: >
-        cd ../lambda/certificate-renewal-py && make zip
+        cd ../lambda/certificate-renewal && make zip
       tags:
         - build-lambda-function
 
@@ -323,7 +323,7 @@
           #- "{{ certificate_renewal.lambda.vpc_subnet_id }}"
         vpc_security_group_ids:
           - "{{ certificate_renewal.lambda.vpc_security_group_id }}"
-        zip_file: "../lambda/certificate-renewal-py/certificate-renewal.zip"
+        zip_file: "../lambda/certificate-renewal/certificate-renewal.zip"
         environment_variables:
           SECURITY_GROUP: "{{ certificate_renewal.lambda.vpc_security_group_id }}"
           SUBNET: "{{ certificate_renewal.lambda.vpc_subnet_ids[0] }}"
