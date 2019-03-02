@@ -56,4 +56,4 @@ The required stack is managed with [ansible](https://www.ansible.com/) playbooks
 [Amazon CloudFormation]: https://aws.amazon.com/cloudformation/
 [AWS CLI]: https://aws.amazon.com/cli/
 [Amazon VPC]: https://aws.amazon.com/vpc/
-[AmazonS3]: https://aws.amazon.com/s3/
+[Amazon S3]: https://aws.amazon.com/s3/
