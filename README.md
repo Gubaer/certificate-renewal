@@ -46,7 +46,7 @@ The required stack is managed with [ansible](https://www.ansible.com/) playbooks
   $ ansible-playbook delete-stack.yml
   ```
 
-
+[Amazon AWS]: https://aws.amazon.com
 [Amazon ECS]: https://aws.amazon.com/ecs/
 [Amazon ECR]: https://aws.amazon.com/ecr/
 [AWS IAM]: https://aws.amazon.com/iam/
@@ -56,3 +56,4 @@ The required stack is managed with [ansible](https://www.ansible.com/) playbooks
 [Amazon CloudFormation]: https://aws.amazon.com/cloudformation/
 [AWS CLI]: https://aws.amazon.com/cli/
 [Amazon VPC]: https://aws.amazon.com/vpc/
+[AmazonS3]: https://aws.amazon.com/s3/
