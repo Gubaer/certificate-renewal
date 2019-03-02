@@ -356,47 +356,6 @@ def build_argument_parser():
             " we update with the renewed certificate")
     return parser
 
-
-def test_publish_challenge():
-    task = CertificateRenewTask()
-    task.init_certbotdir()
-
-    challenge_info = {
-        "challenge_content": "SYfYtzd440O2T0TH2RK-FPbHyXm8207nfQ_Prv9Ry1A.BJSMLJWW-Rr-xCmq_ejfXRmwBEY2KDY6nxY8dl5NIpM",
-        "challenge_url": "http://www.kacon.ch/.well-known/acme-challenge/SYfYtzd440O2T0TH2RK-FPbHyXm8207nfQ_Prv9Ry1A"
-    }
-    task.publish_challenge(challenge_info)
-
-def test_cloudfront_distribution():
-    test_cloudfront_distribution_id="E2GEKJ7CN252O3"
-    parser = build_argument_parser()
-    config = Config(parser.parse_args())
-    task = CertificateRenewTask()
-    reply = task.get_cloudfront_distribution(test_cloudfront_distribution_id)
-    print(json.dumps(reply, indent=2, default=str))
-    etag = reply["ETag"]
-    distribution_config = reply["Distribution"]["DistributionConfig"]
-
-    certificate_id="ASCAJDFKBC7RGTX2YGBCQ"
-    distribution_config["ViewerCertificate"] = {
-        "SSLSupportMethod": "sni-only",
-        "MinimumProtocolVersion": "TLSv1.1_2016", 
-        "IAMCertificateId": certificate_id, 
-        "Certificate": certificate_id, 
-        "CertificateSource": "iam"
-    }
-    task.update_cloudfront_distribution(
-        id=test_cloudfront_distribution_id,
-        distribution_config=distribution_config,
-        etag=etag)
-
-def test_config():
-    parser = build_argument_parser()
-    config = Config(parser.parse_args())
-    print(config.certbot_email)
-    print(config.certbot_domain)
-
-
 def main():
     parser = build_argument_parser()
     args = parser.parse_args()
