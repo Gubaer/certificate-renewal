@@ -1,10 +1,10 @@
 #
-# configuration parameters for renew-certificate.pl
+# configuration parameters for renew-certificate.py
 #
 certbot:
   # the domain for which we renew the certificate
   domain: <your domain>
-  # the d
+  # the email adress used when submitting a request with certbot
   email: <your email address>
   # the working directory for certbot. The script creates three subdirectories
   # there: 'config', 'work', and 'log'. If missing, the script creates 
