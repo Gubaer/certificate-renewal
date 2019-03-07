@@ -5,11 +5,14 @@ This repository provides an [Amazon AWS][Amazon AWS] **stack** to periodically a
 The stack consists of:
 
   * the required [AWS IAM][AWS IAM] **users**, **roles** and their associated **policies**
-  * an [Amazon ECR][Amazon ECR] **repository** which holds a docker image with the renewal script
+  * an [Amazon ECR][Amazon ECR] **repository** which holds a docker image with the certificate renewal script
   * an [Amazon ECS][Amazon ECS] **task definition** which describes the task to renew a certificate
   * an [Amazon ECS][Amazon ECS] **cluster** where AWS will create a docker container from the supplied docker image
   * an [Amazon Lambda][Amazon Lambda] **function**  which will launch the ECS task
   * an [Amazon CloudWatch][Amazon CloudWatch] **log group** which collects the logs of the docker container and the Lambda function
+  * an [Amazon CloudWatch][Amazon CloudWatch] **log group** which collects the logs of the docker container and the Lambda function
+  * a [Amazon CloudWatch][Amazon CloudWatch] **event rule** which periodically (once a month) triggers the lambda function to renew the certificate
+
 
 The required stack is managed with [ansible](https://www.ansible.com/) playbooks.
 
