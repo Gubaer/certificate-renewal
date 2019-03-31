@@ -397,11 +397,6 @@
       tags:
         - create-docker-image
         - create-config
-
-    - name: create run-task json
-      template:
-        src: run-ecs-task.json.j2
-        dest: run-ecs-task.json
         
     - name: create docker image
       docker_image:
