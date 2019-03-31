@@ -2,4 +2,3 @@ aws.env
 config.yml
 *.retry
 *.generated
-run-ecs-task.json
