@@ -274,8 +274,8 @@
         execution_role_arn: "{{ certificateRenewalExecutionRoleArn }}"
         task_role_arn: "{{ certificateRenewalExecutionRoleArn }}"
         launch_type: FARGATE
-        cpu: 256
-        memory: 1024
+        cpu: "256"
+        memory: "1024"
         containers:
           - name: certificate-renewal
             entryPoint: 
@@ -400,13 +400,16 @@
         
     - name: create docker image
       docker_image:
-        path: ../
-        dockerfile: docker/Dockerfile.alpine
+        source: build
         state: present
         name: certificate-renewal:latest
-        force: true
-        buildargs:
-          RENEW_CERTIFICATE_CONF_PATH: ansible/renew-certificate.conf.generated
+        force_source: true
+        build:
+          dockerfile: docker/Dockerfile.alpine
+          path: ../
+          pull: yes
+          args:
+            RENEW_CERTIFICATE_CONF_PATH: ansible/renew-certificate.conf.generated
       tags:
         - create-docker-image
 
@@ -421,13 +424,17 @@
         name: certificate-renewal
         repository: "{{ repositoryUri }}"
         state: present
-        pull: no
+        source: local
+        force_tag: true
+        build:
+          pull: no
       tags:
         - tag-docker-image
 
     - name: push image to ECR repository
       docker_image:
         push: yes
+        source: local
         name: "{{ repositoryUri }}"
       tags:
         - push-docker-image
