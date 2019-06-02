@@ -18,7 +18,7 @@ import yaml
 DEFAULT_CONFIG_FILENAME="renew-certificate.conf"
 
 def is_file_readable(file):
-    return os.path.isfile(file) or not os.access(file, os.R_OK)
+    return os.path.isfile(file)and os.access(file, os.R_OK)
 
 def first_not_none(list):
     try:
@@ -40,13 +40,11 @@ class Config:
 
     @staticmethod
     def ensure_config_file_readable(config_file_path=None):
-        if config_file_path != None:
-            path = config.config_file
-            if not is_file_readable(path):
-                raise ConfigError(
-                    "FATAL: config file '{0}' doesn't exist or isn't readable. Aborting."
-                    .format(path)
-                )
+        if not is_file_readable(config_file_path):
+            raise ConfigError(
+                "FATAL: config file '{0}' doesn't exist or isn't readable. Aborting."
+                .format(config_file_path)
+            )
 
     # the config dict loaded from the config YAML file
     config_file_entries = None

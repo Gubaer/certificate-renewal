@@ -284,7 +284,7 @@
             image: "{{ repositoryUri }}"
             command: 
               - > 
-                /bin/sh -c "/usr/bin/python3 /certificate-renewal/renew-certificate.py --remove-certbot-dir"
+                /bin/sh -c "/usr/bin/python3 /certificate-renewal/renew-certificate.py --remove-certbot-dir --config-file /certificate-renewal/renew-certificate.conf"
             logConfiguration:
               logDriver: awslogs
               options:
