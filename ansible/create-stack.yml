@@ -319,10 +319,8 @@
         role: "{{ certificateRenewalExecutionRoleArn }}"
         handler: certificate_renewal.handler
         runtime: python3.6
-        vpc_subnet_ids: "{{ certificate_renewal.lambda.vpc_subnet_ids }}"
-          #- "{{ certificate_renewal.lambda.vpc_subnet_id }}"
-        vpc_security_group_ids:
-          - "{{ certificate_renewal.lambda.vpc_security_group_id }}"
+        # don't set vpc_subnet_ids nor vpc_security_group_id. The lambda function
+        # shall not rund in a VPC -> doesn't need an Endpoint -> less cost
         zip_file: "../lambda/certificate-renewal/certificate-renewal.zip"
         environment_variables:
           SECURITY_GROUP: "{{ certificate_renewal.lambda.vpc_security_group_id }}"
@@ -370,25 +368,6 @@
         action: lambda:InvokeFunction
         principal: events.amazonaws.com
         source_arn: "{{ cloudwatchRuleArn }}"
-
-    #TODO(karl): find a solution to automatically create/delete a VPC endpoint, 
-    #   for the time being manage it manually
-    #
-    # - name: create vpc endpoint in order to access ECS API
-    #   ec2_vpc_endpoint:
-    #     state: present
-    #     region: "{{ lookup('env', 'AWS_REGION') }}"
-    #     #TODO: provide configuration entry
-    #     vpc_id: vpc-1f250674
-    #     service: "com.amazonaws.{{ lookup('env', 'AWS_REGION') }}.ecs"
-    #     policy: >
-    #      {"Statement": [
-    #          { "Action": "*",
-    #            "Effect": "Allow",
-    #            "Principal": "*",
-    #            "Resource":"*"
-    #          }
-    #       ]}
 
     - name: create config file renew-certificate.conf
       template:
